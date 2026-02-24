@@ -98,6 +98,9 @@ const App: React.FC = () => {
     const found = companyProfiles.find(c => c.id === activeCompanyId);
     return found ? { ...found } : companyProfiles[0] ? { ...companyProfiles[0] } : createDefaultCompanyProfile('default');
   }, [companyProfiles, activeCompanyId]);
+  /** Terminal header name/logo: use first business entity when available (edited in Company Settings) */
+  const terminalDisplayName = businesses[0]?.name || companySettings.companyName || 'Zeweco';
+  const terminalDisplayLogo = businesses[0]?.logoUrl?.trim() || companySettings.logoUrl?.trim() || '';
   const [hiddenEntityIds, setHiddenEntityIds] = useState<Set<string>>(new Set());
   const [selectedBusiness, setSelectedBusiness] = useState<Business | null>(null);
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -339,19 +342,19 @@ const App: React.FC = () => {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 bg-zinc-900 dark:bg-zinc-800 rounded border border-zinc-800 dark:border-zinc-700 flex items-center justify-center overflow-hidden shrink-0">
-              {companySettings.logoUrl?.trim() ? (
-                <img src={companySettings.logoUrl} alt="" className="w-full h-full object-cover" />
+              {terminalDisplayLogo ? (
+                <img src={terminalDisplayLogo} alt="" className="w-full h-full object-cover" />
               ) : (
                 <span className="text-xs font-bold text-white tracking-widest">
-                  {companySettings.companyName?.slice(0, 2).toUpperCase() || 'BT'}
+                  {(terminalDisplayName || 'BT').slice(0, 2).toUpperCase()}
                 </span>
               )}
             </div>
             <div>
               <h1 className="text-lg font-bold tracking-tight bg-gradient-to-r from-zinc-900 to-zinc-500 dark:from-white dark:to-zinc-500 bg-clip-text text-transparent leading-none uppercase">
                 {currentUser?.role === 'CXO'
-                  ? `${(companySettings.companyName || 'Zeweco').toUpperCase()} TERMINAL`
-                  : `${(companySettings.companyName || 'Zeweco').toUpperCase()} · MANAGER WORKSPACE`}
+                  ? `${(terminalDisplayName || 'Zeweco').toUpperCase()} TERMINAL`
+                  : `${(terminalDisplayName || 'Zeweco').toUpperCase()} · MANAGER WORKSPACE`}
               </h1>
               <div className="flex items-center gap-2 mt-1">
                 <Shield size={10} className="text-green-600 dark:text-green-500" />
@@ -652,8 +655,8 @@ const App: React.FC = () => {
         onUpdateBusiness={updateBusiness}
         managers={managers}
         role={currentUser?.role}
-        companyName={companySettings.companyName}
-        companyLogoUrl={companySettings.logoUrl}
+        companyName={terminalDisplayName}
+        companyLogoUrl={terminalDisplayLogo || undefined}
       />
 
       <MemberManagement
@@ -676,10 +679,10 @@ const App: React.FC = () => {
         onAddBusiness={handleAddBusiness}
         entityArchivingEnabled={companySettings.entityArchivingEnabled}
         defaultStages={companySettings.defaultStages}
-        companyName={companySettings.companyName}
-        companyLogoUrl={companySettings.logoUrl}
-        companyIndustry={companySettings.industry}
-        companyCategory={companySettings.category}
+        companyName={terminalDisplayName}
+        companyLogoUrl={terminalDisplayLogo || undefined}
+        companyIndustry={businesses[0]?.industry || companySettings.industry}
+        companyCategory={businesses[0]?.category || companySettings.category}
       />
 
       <CompanySettingsPanel
