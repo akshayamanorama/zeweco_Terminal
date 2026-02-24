@@ -141,7 +141,7 @@ export const MemberManagement: React.FC<MemberManagementProps> = ({
       console.error('Reset credentials failed', e);
       if (newPassword || newEmail) {
         saveCredentialsLocally(loginEmail, newPassword || null, { ...selectedManager, email: loginEmail });
-        setCredentialMessage('Credentials saved locally. Manager can log in with the new password (backend was not available).');
+        setCredentialMessage('Password updated. Manager can log in with the new password on this device. Start the backend server to save to the database.');
       } else {
         setCredentialMessage('Could not save to server. Is the backend running?');
       }

@@ -19,10 +19,14 @@ import {
   Check,
   User as UserIcon,
   Users,
-  X
+  X,
+  Settings,
+  ArrowUpCircle,
+  FileText,
+  HelpCircle,
 } from 'lucide-react';
-import { Business, FilterType, User } from './types';
-import { BUSINESS_DATA } from './constants';
+import { Business, FilterType, User, CompanySettings, CompanyProfile } from './types';
+import { BUSINESS_DATA, createDefaultCompanyProfile } from './constants';
 import { api } from './src/api/client';
 import { StageBadge, StatusPill } from './components/Badge';
 import { RouteLine } from './components/RouteLine';
@@ -31,6 +35,8 @@ import { Login } from './components/Login';
 import { ManagerWorkspace } from './components/ManagerWorkspace';
 import { MemberManagement } from './components/MemberManagement';
 import { BusinessEntitiesPanel } from './components/BusinessEntitiesPanel';
+import { ManagerProfile } from './components/ManagerProfile';
+import { CompanySettingsPanel } from './components/CompanySettingsPanel';
 
 const DEFAULT_MANAGERS: User[] = [
   {
@@ -69,6 +75,29 @@ const App: React.FC = () => {
   const [isSearchExpanded, setIsSearchExpanded] = useState(false);
   const [isMembersOpen, setIsMembersOpen] = useState(false);
   const [isBusinessEntitiesOpen, setIsBusinessEntitiesOpen] = useState(false);
+  const [isManagerProfileOpen, setIsManagerProfileOpen] = useState(false);
+  const [isCompanySettingsOpen, setIsCompanySettingsOpen] = useState(false);
+  const [companyProfiles, setCompanyProfiles] = useState<CompanyProfile[]>(() => {
+    try {
+      const s = localStorage.getItem('terminal_company_profiles');
+      if (s) {
+        const parsed = JSON.parse(s) as CompanyProfile[];
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (_) {}
+    return [createDefaultCompanyProfile('default', 'Zeweco')];
+  });
+  const [activeCompanyId, setActiveCompanyId] = useState<string>(() => {
+    try {
+      const id = localStorage.getItem('terminal_active_company_id');
+      if (id) return id;
+    } catch (_) {}
+    return 'default';
+  });
+  const companySettings: CompanySettings = useMemo(() => {
+    const found = companyProfiles.find(c => c.id === activeCompanyId);
+    return found ? { ...found } : companyProfiles[0] ? { ...companyProfiles[0] } : createDefaultCompanyProfile('default');
+  }, [companyProfiles, activeCompanyId]);
   const [hiddenEntityIds, setHiddenEntityIds] = useState<Set<string>>(new Set());
   const [selectedBusiness, setSelectedBusiness] = useState<Business | null>(null);
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -178,6 +207,9 @@ const App: React.FC = () => {
 
   const updateBusiness = (updated: Business) => {
     setBusinesses(prev => prev.map(b => b.id === updated.id ? updated : b));
+    if (selectedBusiness?.id === updated.id) {
+      setSelectedBusiness(updated);
+    }
   };
 
   const addManager = (manager: User) => {
@@ -193,7 +225,9 @@ const App: React.FC = () => {
   };
 
   const filteredBusinesses = useMemo(() => {
-    let result = businesses.filter(b => !hiddenEntityIds.has(b.id));
+    let result = companySettings.entityArchivingEnabled
+      ? businesses.filter(b => !hiddenEntityIds.has(b.id))
+      : [...businesses];
 
     // Role based filtering
     if (currentUser?.role === 'Manager') {
@@ -223,7 +257,7 @@ const App: React.FC = () => {
     });
 
     return result;
-  }, [businesses, filter, search, currentUser, hiddenEntityIds]);
+  }, [businesses, filter, search, currentUser, hiddenEntityIds, companySettings.entityArchivingEnabled]);
 
   const businessEntityActiveIds = useMemo(
     () => new Set(businesses.map(b => b.id).filter(id => !hiddenEntityIds.has(id))),
@@ -247,12 +281,41 @@ const App: React.FC = () => {
     setBusinesses(prev => [...prev, newBusiness]);
   };
 
+  useEffect(() => {
+    try {
+      localStorage.setItem('terminal_company_profiles', JSON.stringify(companyProfiles));
+      localStorage.setItem('terminal_active_company_id', activeCompanyId);
+    } catch (_) {}
+  }, [companyProfiles, activeCompanyId]);
+
+  const handleSaveCompanySettings = (next: CompanySettings) => {
+    setCompanyProfiles(prev =>
+      prev.map(c => (c.id === activeCompanyId ? { ...c, ...next } : c))
+    );
+  };
+
+  const handleSwitchCompany = (id: string) => {
+    setActiveCompanyId(id);
+  };
+
+  const handleAddCompany = () => {
+    const id = `company-${Date.now()}`;
+    setCompanyProfiles(prev => [...prev, createDefaultCompanyProfile(id, 'New Company')]);
+    setActiveCompanyId(id);
+  };
+
   const stats = useMemo(() => ({
     total: filteredBusinesses.length,
     redAlerts: filteredBusinesses.filter(b => b.health === 'Red' || b.status === 'Overdue').length,
     stale: filteredBusinesses.filter(b => b.status === 'Stale').length,
     dueSoon: filteredBusinesses.filter(b => b.status === 'At Risk').length,
+    escalationRequests: filteredBusinesses.filter(b => b.escalationRequested).length,
   }), [filteredBusinesses]);
+
+  const managerRequestEntities = useMemo(
+    () => filteredBusinesses.filter(b => b.escalationRequested || (b.supportNeededFromCXO && b.supportNeededFromCXO.trim())),
+    [filteredBusinesses]
+  );
 
   if (isInitializing) {
     return (
@@ -275,12 +338,20 @@ const App: React.FC = () => {
       <header className="flex-none bg-white/80 dark:bg-black/80 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-900 px-6 py-3 transition-colors duration-300 z-50">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-zinc-900 dark:bg-zinc-800 rounded border border-zinc-800 dark:border-zinc-700 flex items-center justify-center">
-              <span className="text-xs font-bold text-white tracking-widest">BT</span>
+            <div className="w-8 h-8 bg-zinc-900 dark:bg-zinc-800 rounded border border-zinc-800 dark:border-zinc-700 flex items-center justify-center overflow-hidden shrink-0">
+              {companySettings.logoUrl?.trim() ? (
+                <img src={companySettings.logoUrl} alt="" className="w-full h-full object-cover" />
+              ) : (
+                <span className="text-xs font-bold text-white tracking-widest">
+                  {companySettings.companyName?.slice(0, 2).toUpperCase() || 'BT'}
+                </span>
+              )}
             </div>
             <div>
               <h1 className="text-lg font-bold tracking-tight bg-gradient-to-r from-zinc-900 to-zinc-500 dark:from-white dark:to-zinc-500 bg-clip-text text-transparent leading-none uppercase">
-                {currentUser?.role === 'CXO' ? 'ZEWECO TERMINAL' : 'MANAGER WORKSPACE'}
+                {currentUser?.role === 'CXO'
+                  ? `${(companySettings.companyName || 'Zeweco').toUpperCase()} TERMINAL`
+                  : `${(companySettings.companyName || 'Zeweco').toUpperCase()} · MANAGER WORKSPACE`}
               </h1>
               <div className="flex items-center gap-2 mt-1">
                 <Shield size={10} className="text-green-600 dark:text-green-500" />
@@ -294,6 +365,13 @@ const App: React.FC = () => {
             <div className="flex items-center gap-2 mr-2">
               {currentUser?.role === 'CXO' && (
                 <>
+                  <button
+                    onClick={() => setIsCompanySettingsOpen(true)}
+                    className={`p-2 rounded-lg bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400 hover:text-blue-500 transition-all ${isCompanySettingsOpen ? 'bg-blue-50 border-blue-200 text-blue-500 dark:bg-blue-900/20 dark:border-blue-800' : ''}`}
+                    title="Company settings"
+                  >
+                    <Settings size={14} />
+                  </button>
                   <button
                     onClick={() => setIsBusinessEntitiesOpen(true)}
                     className={`p-2 rounded-lg bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400 hover:text-blue-500 transition-all ${isBusinessEntitiesOpen ? 'bg-blue-50 border-blue-200 text-blue-500 dark:bg-blue-900/20 dark:border-blue-800' : ''}`}
@@ -309,6 +387,15 @@ const App: React.FC = () => {
                     <Users size={14} />
                   </button>
                 </>
+              )}
+              {currentUser?.role === 'Manager' && (
+                <button
+                  onClick={() => setIsManagerProfileOpen(true)}
+                  className={`p-2 rounded-lg bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400 hover:text-blue-500 transition-all ${isManagerProfileOpen ? 'bg-blue-50 border-blue-200 text-blue-500 dark:bg-blue-900/20 dark:border-blue-800' : ''}`}
+                  title="Profile & Settings"
+                >
+                  <Settings size={14} />
+                </button>
               )}
 
               <div className={`flex items-center transition-all duration-300 ease-in-out ${isSearchExpanded ? 'w-64' : 'w-10'}`}>
@@ -354,7 +441,13 @@ const App: React.FC = () => {
                 <div className="w-9 h-9 rounded-full bg-zinc-100 dark:bg-zinc-800 border-2 border-zinc-200 dark:border-zinc-700 p-0.5 overflow-hidden transition-all group-hover:border-blue-400 cursor-pointer">
                   <img src={currentUser?.avatar} alt="Avatar" className="w-full h-full rounded-full object-cover" />
                 </div>
-                <div className="absolute right-0 top-full mt-2 w-48 bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-2xl py-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all transform origin-top-right group-hover:translate-y-0 translate-y-2">
+                <div className="absolute right-0 top-full mt-2 w-48 bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-2xl py-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all transform origin-top-right group-hover:translate-y-0 translate-y-2 z-50">
+                  {currentUser?.role === 'CXO' && (
+                    <button onClick={() => setIsCompanySettingsOpen(true)} className="w-full flex items-center gap-3 px-4 py-2 text-xs text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors text-left"><Settings size={14} />Company settings</button>
+                  )}
+                  {currentUser?.role === 'Manager' && (
+                    <button onClick={() => setIsManagerProfileOpen(true)} className="w-full flex items-center gap-3 px-4 py-2 text-xs text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors text-left"><UserIcon size={14} />Profile &amp; Settings</button>
+                  )}
                   <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-2 text-xs text-red-500 hover:bg-red-500/5 transition-colors text-left"><LogOut size={14} />Logout</button>
                 </div>
               </div>
@@ -368,18 +461,21 @@ const App: React.FC = () => {
           <ManagerWorkspace
             businesses={filteredBusinesses}
             currentUser={currentUser}
+            companySettings={companySettings}
             onUpdateBusiness={updateBusiness}
+            onOpenEntityDetail={(business) => setSelectedBusiness(business)}
           />
         ) : (
           <div className="h-full overflow-y-auto bg-white dark:bg-zinc-950 min-h-0">
             <div className="max-w-[1440px] mx-auto px-6 py-6">
               {/* Stats: light grey cards, subtle shadow, uppercase medium grey labels, large bold dark numbers */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
                 {[
                   { label: 'Managed Assets', val: stats.total, icon: LayoutGrid },
                   { label: 'Critical Risks', val: stats.redAlerts, icon: AlertCircle, trend: '2 increased' },
                   { label: 'Pending Updates', val: stats.stale, icon: Clock },
                   { label: 'Strategic Deadlines', val: stats.dueSoon, icon: Calendar },
+                  { label: 'Escalation Requests', val: stats.escalationRequests, icon: ArrowUpCircle },
                 ].map((card, i) => (
                   <div key={i} className="bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-100 dark:border-zinc-800 py-4 px-4 rounded-lg shadow-sm">
                     <div className="flex justify-between items-start">
@@ -398,20 +494,76 @@ const App: React.FC = () => {
                 ))}
               </div>
 
+              {/* Manager requests & reports – visible to CXO */}
+              {managerRequestEntities.length > 0 && (
+                <div className="mb-6 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg overflow-hidden shadow-sm">
+                  <div className="px-4 py-3 border-b border-zinc-100 dark:border-zinc-800 flex items-center gap-2">
+                    <ArrowUpCircle size={16} className="text-blue-500 shrink-0" />
+                    <h3 className="text-sm font-bold text-zinc-800 dark:text-zinc-200 uppercase tracking-wider">Manager requests & reports</h3>
+                    <span className="text-xs font-mono text-zinc-500 dark:text-zinc-400">({managerRequestEntities.length} need attention)</span>
+                  </div>
+                  <ul className="divide-y divide-zinc-100 dark:divide-zinc-800">
+                    {managerRequestEntities.map((biz) => (
+                      <li
+                        key={biz.id}
+                        onClick={() => setSelectedBusiness(biz)}
+                        className="flex items-center gap-4 px-4 py-3 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
+                      >
+                        <div className="w-8 h-8 rounded-lg bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-xs font-bold text-zinc-600 dark:text-zinc-300 shrink-0 overflow-hidden">
+                          {biz.logoUrl?.trim() ? <img src={biz.logoUrl} alt="" className="w-full h-full object-cover" /> : biz.code.substring(0, 2)}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-semibold text-zinc-900 dark:text-white truncate">{biz.name}</p>
+                          <div className="flex flex-wrap items-center gap-2 mt-0.5">
+                            {biz.escalationRequested && (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-200">
+                                <ArrowUpCircle size={10} /> Escalation requested
+                              </span>
+                            )}
+                            {biz.supportNeededFromCXO && biz.supportNeededFromCXO.trim() && (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200 truncate max-w-[200px]" title={biz.supportNeededFromCXO}>
+                                <HelpCircle size={10} /> Support needed
+                              </span>
+                            )}
+                          </div>
+                          {biz.escalationRequested && biz.escalationNote && biz.escalationNote.trim() && (
+                            <p className="mt-1.5 text-[11px] text-zinc-600 dark:text-zinc-400 line-clamp-2" title={biz.escalationNote}>
+                              Reason: {biz.escalationNote}
+                            </p>
+                          )}
+                        </div>
+                        <div className="text-right shrink-0 min-w-0 max-w-[140px]">
+                          {biz.escalationRequested && biz.escalatedToManagerId ? (
+                            <span className="text-xs font-medium text-blue-700 dark:text-blue-300 block truncate" title={managers.find(m => m.id === biz.escalatedToManagerId)?.email}>
+                              → {managers.find(m => m.id === biz.escalatedToManagerId)?.name ?? 'Manager'}
+                            </span>
+                          ) : null}
+                          <span className="text-xs text-zinc-500 dark:text-zinc-400 block truncate">{biz.responsible ?? '—'}</span>
+                        </div>
+                        <ChevronRight size={16} className="text-zinc-400 shrink-0" />
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="px-4 py-2 text-[10px] text-zinc-500 dark:text-zinc-400 border-t border-zinc-100 dark:border-zinc-800">Click a row to open details and respond.</p>
+                </div>
+              )}
+
               {/* Table: white background, header medium grey uppercase, rows alternate very light grey / white */}
               <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg overflow-hidden shadow-sm">
                 <div className="overflow-x-auto">
                   <table className="w-full text-left border-collapse table-fixed min-w-[1200px]">
                     <thead className="bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800">
                       <tr>
-                        <th className="px-4 py-3 w-[18%] dashboard-table-head">Business Entity</th>
-                        <th className="px-4 py-3 w-[8%] dashboard-table-head">Status</th>
-                        <th className="px-4 py-3 w-[26%] dashboard-table-head">Route Map (Health Blinking)</th>
-                        <th className="px-4 py-3 w-[10%] dashboard-table-head">Responsible</th>
-                        <th className="px-4 py-3 w-[14%] dashboard-table-head">Next Deliverable</th>
-                        <th className="px-4 py-3 w-[7%] dashboard-table-head">ETA</th>
-                        <th className="px-4 py-3 w-[7%] dashboard-table-head">Latency</th>
-                        <th className="px-4 py-3 w-[10%] dashboard-table-head">Stage</th>
+                        <th className="px-4 py-3 w-[16%] dashboard-table-head">Business Entity</th>
+                        <th className="px-4 py-3 w-[7%] dashboard-table-head">Status</th>
+                        <th className="px-4 py-3 w-[22%] dashboard-table-head">Route Map (Health Blinking)</th>
+                        <th className="px-4 py-3 w-[8%] dashboard-table-head">Responsible</th>
+                        <th className="px-4 py-3 w-[12%] dashboard-table-head">Next Deliverable</th>
+                        <th className="px-4 py-3 w-[6%] dashboard-table-head">ETA</th>
+                        <th className="px-4 py-3 w-[6%] dashboard-table-head">Latency</th>
+                        <th className="px-4 py-3 w-[6%] dashboard-table-head">Risks</th>
+                        <th className="px-4 py-3 w-[6%] dashboard-table-head">Escalation</th>
+                        <th className="px-4 py-3 w-[9%] dashboard-table-head">Stage</th>
                         <th className="w-[4%]"></th>
                       </tr>
                     </thead>
@@ -420,17 +572,19 @@ const App: React.FC = () => {
                         const isOverdue = biz.status === 'Overdue';
                         const isStale = biz.status === 'Stale';
                         const isEven = idx % 2 === 0;
+                        const riskCount = biz.risks?.length ?? 0;
+                        const hasEscalation = Boolean(biz.escalationRequested);
                         return (
                           <tr
                             key={biz.id}
                             onClick={() => setSelectedBusiness(biz)}
-                            className={`group cursor-pointer border-b border-zinc-100 dark:border-zinc-800 hover:bg-zinc-50/80 dark:hover:bg-zinc-800/20 ${isEven ? 'bg-white dark:bg-zinc-900' : 'bg-zinc-50/70 dark:bg-zinc-900/60'} ${isStale ? 'bg-amber-50/30 dark:bg-amber-900/10' : ''}`}
+                            className={`group cursor-pointer border-b border-zinc-100 dark:border-zinc-800 hover:bg-zinc-50/80 dark:hover:bg-zinc-800/20 ${isEven ? 'bg-white dark:bg-zinc-900' : 'bg-zinc-50/70 dark:bg-zinc-900/60'} ${isStale ? 'bg-amber-50/30 dark:bg-amber-900/10' : ''} ${hasEscalation ? 'bg-blue-50/30 dark:bg-blue-900/10' : ''}`}
                             style={{ height: '56px' }}
                           >
                             <td className="px-4 py-2.5">
                               <div className="flex items-center gap-2.5">
-                                <div className="w-8 h-8 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center dashboard-cell-secondary font-medium shrink-0">
-                                  {biz.code.substring(0, 2)}
+                                <div className="w-8 h-8 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center dashboard-cell-secondary font-medium shrink-0 overflow-hidden">
+                                  {biz.logoUrl?.trim() ? <img src={biz.logoUrl} alt="" className="w-full h-full object-cover" /> : biz.code.substring(0, 2)}
                                 </div>
                                 <span className="dashboard-entity-name truncate">{biz.name}</span>
                               </div>
@@ -446,6 +600,30 @@ const App: React.FC = () => {
                             <td className="px-4 py-2.5"><span className="dashboard-cell-primary truncate block" title={biz.nextMilestone}>{biz.nextMilestone}</span></td>
                             <td className="px-4 py-2.5"><span className={`dashboard-cell-primary ${isOverdue ? 'text-red-600 dark:text-red-400' : ''}`}>{biz.eta}</span></td>
                             <td className="px-4 py-2.5"><span className="dashboard-cell-secondary">{biz.updated}</span></td>
+                            <td className="px-4 py-2.5">
+                              {riskCount > 0 ? (
+                                <span className="inline-flex items-center gap-1 dashboard-label-sm px-2 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
+                                  <AlertCircle size={10} /> {riskCount}
+                                </span>
+                              ) : (
+                                <span className="dashboard-cell-secondary">—</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-2.5">
+                              {hasEscalation ? (
+                                <span
+                                  className="inline-flex items-center gap-1 dashboard-label-sm px-2 py-0.5 rounded bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-200"
+                                  title={biz.escalationNote && biz.escalationNote.trim() ? `Reason: ${biz.escalationNote}` : undefined}
+                                >
+                                  <ArrowUpCircle size={10} />
+                                  {biz.escalatedToManagerId
+                                    ? (managers.find(m => m.id === biz.escalatedToManagerId)?.name ?? 'Requested')
+                                    : 'Requested'}
+                                </span>
+                              ) : (
+                                <span className="dashboard-cell-secondary">—</span>
+                              )}
+                            </td>
                             <td className="px-4 py-2.5"><StageBadge stage={biz.stage} /></td>
                             <td className="pr-4 text-right"><ChevronRight size={14} className="text-zinc-300 dark:text-zinc-500 opacity-0 group-hover:opacity-100 transition-opacity" /></td>
                           </tr>
@@ -471,6 +649,11 @@ const App: React.FC = () => {
       <DetailDrawer
         business={selectedBusiness}
         onClose={() => setSelectedBusiness(null)}
+        onUpdateBusiness={updateBusiness}
+        managers={managers}
+        role={currentUser?.role}
+        companyName={companySettings.companyName}
+        companyLogoUrl={companySettings.logoUrl}
       />
 
       <MemberManagement
@@ -491,6 +674,31 @@ const App: React.FC = () => {
         activeIds={businessEntityActiveIds}
         onToggleActive={handleEntityToggleActive}
         onAddBusiness={handleAddBusiness}
+        entityArchivingEnabled={companySettings.entityArchivingEnabled}
+        defaultStages={companySettings.defaultStages}
+        companyName={companySettings.companyName}
+        companyLogoUrl={companySettings.logoUrl}
+        companyIndustry={companySettings.industry}
+        companyCategory={companySettings.category}
+      />
+
+      <CompanySettingsPanel
+        isOpen={isCompanySettingsOpen}
+        onClose={() => setIsCompanySettingsOpen(false)}
+        companies={companyProfiles}
+        activeCompanyId={activeCompanyId}
+        onSwitchCompany={handleSwitchCompany}
+        onAddCompany={handleAddCompany}
+        settings={companySettings}
+        onSave={handleSaveCompanySettings}
+        businesses={businesses}
+        onUpdateBusiness={updateBusiness}
+      />
+
+      <ManagerProfile
+        isOpen={isManagerProfileOpen}
+        onClose={() => setIsManagerProfileOpen(false)}
+        user={currentUser}
       />
     </div>
   );

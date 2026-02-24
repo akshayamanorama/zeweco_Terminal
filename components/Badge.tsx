@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Stage, Status, Health } from '../types';
+import { Stage, Status, Health, RiskSeverity } from '../types';
 
 /* Screenshot: stage pills = colored text on light tint background (rectangular, rounded) */
 export const StageBadge: React.FC<{ stage: Stage }> = ({ stage }) => {
@@ -47,3 +47,16 @@ export const HealthIndicator: React.FC<{ health: Health }> = ({ health }) => {
     </div>
   );
 };
+
+const severityStyles: Record<RiskSeverity, string> = {
+  Low: 'bg-slate-100 text-slate-700 dark:bg-slate-700/40 dark:text-slate-300',
+  Medium: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300',
+  High: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300',
+  Critical: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 font-medium',
+};
+
+export const SeverityBadge: React.FC<{ severity: RiskSeverity }> = ({ severity }) => (
+  <span className={`dashboard-label-sm px-2 py-0.5 rounded whitespace-nowrap ${severityStyles[severity]}`}>
+    {severity}
+  </span>
+);

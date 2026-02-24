@@ -1,5 +1,34 @@
 
-import { Business, Checklist } from './types';
+import { Business, Checklist, CompanySettings, Stage, CompanyProfile } from './types';
+
+const STAGES: Stage[] = ['Foundation', 'Design', 'Prototype', 'Launch', 'Traction', 'Scale'];
+
+export const DEFAULT_COMPANY_SETTINGS: CompanySettings = {
+  companyName: 'Zeweco',
+  logoUrl: '',
+  industry: 'Technology',
+  category: 'Portfolio & Innovation',
+  fiscalYearStartMonth: 4, // April
+  defaultTimezone: 'Asia/Kolkata',
+  reportingCycle: 'weekly',
+  defaultStages: [...STAGES],
+  escalationThresholdOverdue: 3,
+  entityArchivingEnabled: true,
+  entityPriorityLevels: ['High', 'Medium', 'Low'],
+  riskAlertNotifications: true,
+  overdueAlerts: true,
+  deadlineAlerts: true,
+  notificationMethod: 'in-app',
+};
+
+export function createDefaultCompanyProfile(id: string, name?: string): CompanyProfile {
+  return {
+    id,
+    ...DEFAULT_COMPANY_SETTINGS,
+    companyName: name || DEFAULT_COMPANY_SETTINGS.companyName,
+    defaultStages: [...DEFAULT_COMPANY_SETTINGS.defaultStages],
+  };
+}
 
 const generateMockChecklists = (): Checklist[] => [
   {

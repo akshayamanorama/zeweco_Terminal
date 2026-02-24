@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, LayoutGrid, Plus, ChevronUp, ChevronDown, User as UserIcon, Check } from 'lucide-react';
+import { X, LayoutGrid, Plus, ChevronUp, ChevronDown, User as UserIcon, Check, Building2 } from 'lucide-react';
 import { Business, Checklist, Stage, Status, Health } from '../types';
 
 interface BusinessEntitiesPanelProps {
@@ -10,6 +10,15 @@ interface BusinessEntitiesPanelProps {
   activeIds?: Set<string>;
   onToggleActive?: (id: string) => void;
   onAddBusiness?: (business: Business) => void;
+  /** When false, archive/hide toggle is hidden (CXO setting) */
+  entityArchivingEnabled?: boolean;
+  /** Stage order from company settings (for add-entity dropdown) */
+  defaultStages?: Stage[];
+  /** Company context from Company Settings (name, logo, industry, category) */
+  companyName?: string;
+  companyLogoUrl?: string;
+  companyIndustry?: string;
+  companyCategory?: string;
 }
 
 const defaultChecklists = (): Checklist[] => [
@@ -36,7 +45,14 @@ export const BusinessEntitiesPanel: React.FC<BusinessEntitiesPanelProps> = ({
   activeIds: activeIdsProp,
   onToggleActive,
   onAddBusiness,
+  entityArchivingEnabled = true,
+  defaultStages,
+  companyName,
+  companyLogoUrl,
+  companyIndustry,
+  companyCategory,
 }) => {
+  const stageOptions = defaultStages?.length ? defaultStages : STAGES;
   const [order, setOrder] = useState<Business[]>(() => [...businesses]);
   const [localActiveIds, setLocalActiveIds] = useState<Set<string>>(() => new Set(businesses.map(b => b.id)));
   const [isAdding, setIsAdding] = useState(false);
@@ -128,15 +144,21 @@ export const BusinessEntitiesPanel: React.FC<BusinessEntitiesPanelProps> = ({
       >
         <header className="p-6 border-b border-zinc-200 dark:border-zinc-800 flex justify-between items-start">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 flex items-center justify-center text-zinc-500 dark:text-zinc-400">
-              <LayoutGrid size={20} />
+            <div className="w-12 h-12 rounded-xl bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 overflow-hidden flex items-center justify-center shrink-0">
+              {companyLogoUrl?.trim() ? (
+                <img src={companyLogoUrl} alt="" className="w-full h-full object-cover" />
+              ) : (
+                <Building2 size={22} className="text-zinc-500 dark:text-zinc-400" />
+              )}
             </div>
             <div>
               <h2 className="text-xl font-bold text-zinc-900 dark:text-white tracking-tight">
-                Business Entities
+                {companyName ? `${companyName} · Business Entities` : 'Business Entities'}
               </h2>
               <p className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-[0.18em] mt-1">
-                Add, Remove &amp; Manage Entities
+                {companyIndustry || companyCategory
+                  ? `Add, Remove & Manage Entities · ${[companyIndustry, companyCategory].filter(Boolean).join(' · ')}`
+                  : 'Add, Remove &amp; Manage Entities'}
               </p>
             </div>
           </div>
@@ -183,7 +205,7 @@ export const BusinessEntitiesPanel: React.FC<BusinessEntitiesPanelProps> = ({
                   onChange={e => setNewStage(e.target.value as Stage)}
                   className="w-full px-3 py-2 text-sm bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
                 >
-                  {STAGES.map(s => (
+                  {stageOptions.map(s => (
                     <option key={s} value={s}>{s}</option>
                   ))}
                 </select>
@@ -255,8 +277,8 @@ export const BusinessEntitiesPanel: React.FC<BusinessEntitiesPanelProps> = ({
                       <ChevronDown size={16} />
                     </button>
                   </div>
-                  <div className="w-9 h-9 rounded-lg bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 flex items-center justify-center text-xs font-semibold text-zinc-600 dark:text-zinc-400 shrink-0">
-                    {biz.code.substring(0, 2)}
+                  <div className="w-9 h-9 rounded-lg bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 flex items-center justify-center text-xs font-semibold text-zinc-600 dark:text-zinc-400 shrink-0 overflow-hidden">
+                    {biz.logoUrl?.trim() ? <img src={biz.logoUrl} alt="" className="w-full h-full object-cover" /> : biz.code.substring(0, 2)}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-bold text-zinc-900 dark:text-white truncate">{biz.name}</p>
@@ -269,15 +291,18 @@ export const BusinessEntitiesPanel: React.FC<BusinessEntitiesPanelProps> = ({
                       </span>
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={isActive}
-                    onClick={(e) => { e.stopPropagation(); toggleActive(biz.id); }}
-                    className={`relative inline-flex h-6 w-11 shrink-0 rounded-full cursor-pointer transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500/30 touch-manipulation ${isActive ? 'bg-blue-500' : 'bg-zinc-200 dark:bg-zinc-700'}`}
-                  >
-                    <span className={`pointer-events-none absolute top-0.5 left-0.5 inline-block h-5 w-5 rounded-full bg-white shadow transition-transform ${isActive ? 'translate-x-5' : 'translate-x-0'}`} />
-                  </button>
+                  {entityArchivingEnabled && onToggleActive && (
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={isActive}
+                      title={isActive ? 'Visible on dashboard' : 'Hidden (archived)'}
+                      onClick={(e) => { e.stopPropagation(); toggleActive(biz.id); }}
+                      className={`relative inline-flex h-6 w-11 shrink-0 rounded-full cursor-pointer transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500/30 touch-manipulation ${isActive ? 'bg-blue-500' : 'bg-zinc-200 dark:bg-zinc-700'}`}
+                    >
+                      <span className={`pointer-events-none absolute top-0.5 left-0.5 inline-block h-5 w-5 rounded-full bg-white shadow transition-transform ${isActive ? 'translate-x-5' : 'translate-x-0'}`} />
+                    </button>
+                  )}
                 </div>
               );
             })}
