@@ -1,0 +1,26 @@
+/* Dashboard & app base – ensures typography and layout apply */
+#root {
+  min-height: 100vh;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+/* Stats card labels – small uppercase */
+.dashboard-card-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: #a1a1aa;
+}
+
+.dark .dashboard-card-label {
+  color: #71717a;
+}
+
+/* Table header typography */
+.dashboard-table th {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}

@@ -1,0 +1,36 @@
+{
+  "name": "zeweco-terminal",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "build:server": "cd server && npm run build",
+    "build:all": "npm run build && npm run build:server",
+    "build:prod": "npm install && cd server && npm install && cd .. && npm run build:all",
+    "preview": "vite preview",
+    "dev:server": "cd server && npm run dev",
+    "start": "concurrently -n s,v \"npm run dev:server\" \"npm run dev:wait\"",
+    "dev:wait": "wait-on http://localhost:3001/api/health -t 15000 && vite",
+    "start:fresh": "bash start-fresh.sh",
+    "start:prod": "cd server && NODE_ENV=production node dist/src/index.js",
+    "fix:cloudflare": "node scripts/fix-cloudflare-522.js",
+    "deploy:vps": "./scripts/deploy-to-vps.sh",
+    "reset:server": "node scripts/reset-password-remote.js"
+  },
+  "dependencies": {
+    "lucide-react": "^0.563.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4"
+  },
+  "devDependencies": {
+    "wait-on": "^8.0.1",
+    "@types/node": "^22.14.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "concurrently": "^9.2.1",
+    "ssh2": "^1.17.0",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.0"
+  }
+}

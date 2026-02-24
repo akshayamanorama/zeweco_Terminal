@@ -1,0 +1,62 @@
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  name      String
+  role      String   // 'CXO' | 'Manager'
+  email     String   @unique
+  avatar    String?
+  password  String   // In a real app this would be hashed
+  lastLogin   DateTime @default(now())
+  permissions String   @default("[]") // JSON array of permission strings
+}
+
+model PasswordResetPin {
+  id        String   @id @default(uuid())
+  email     String
+  pin       String   // 6-digit PIN
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+model Business {
+  id            String      @id @default(uuid())
+  name          String
+  code          String
+  stage         String      // 'Foundation' | 'Design' | 'Prototype' | 'Launch' | 'Traction' | 'Scale'
+  health        String      // 'Green' | 'Yellow' | 'Red'
+  routeProgress Int         // 1-12
+  nextMilestone String
+  eta           String
+  updatedAt     DateTime    @updatedAt
+  status        String      // 'On Track' | 'At Risk' | 'Overdue' | 'Stale'
+  responsible   String?
+  visible       Boolean     @default(true) // when false, entity is hidden from terminal view
+  sortOrder     Int         @default(0)    // order in panel and on terminal (lower = first)
+  logo          String?     // uploaded company logo path e.g. /uploads/logos/id.jpg
+  checklists    Checklist[]
+}
+
+model Checklist {
+  id         String   @id @default(uuid())
+  title      String
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  tasks      Task[]
+}
+
+model Task {
+  id          String    @id @default(uuid())
+  text        String
+  completed   Boolean   @default(false)
+  checklistId String
+  checklist   Checklist @relation(fields: [checklistId], references: [id], onDelete: Cascade)
+}
