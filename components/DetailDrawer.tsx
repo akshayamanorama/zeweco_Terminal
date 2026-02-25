@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, CheckCircle2, Clock, Activity, Target, AlertTriangle, ArrowUpCircle, Calendar, HelpCircle, Plus, Trash2, Shield, MessageSquare, Image } from 'lucide-react';
+import { X, CheckCircle2, Clock, Activity, Target, AlertTriangle, ArrowUpCircle, Calendar, HelpCircle, Plus, Trash2, Shield, MessageSquare, Image, Pencil, BarChart3 } from 'lucide-react';
 import { Business, Risk, RiskSeverity, Health, User, UserRole } from '../types';
 import { StageBadge, HealthIndicator, SeverityBadge } from './Badge';
 
@@ -41,9 +41,12 @@ export const DetailDrawer: React.FC<DetailDrawerProps> = ({ business, onClose, o
   const [entityYearEst, setEntityYearEst] = useState(business?.establishedYear ? String(business.establishedYear) : '');
   const [entityDateEst, setEntityDateEst] = useState(business?.establishedDate ?? '');
   const entityPhotoInputRef = useRef<HTMLInputElement>(null);
+  /** CXO: default is status view; only show edit form when they choose "Edit company profile" */
+  const [showCompanyProfileEdit, setShowCompanyProfileEdit] = useState(false);
 
   useEffect(() => {
     if (business) {
+      setShowCompanyProfileEdit(false);
       setEscalationNote(business.escalationNote ?? '');
       setNextWeekFocus(business.nextWeekFocus ?? '');
       setSupportNeeded(business.supportNeededFromCXO ?? '');
@@ -58,6 +61,10 @@ export const DetailDrawer: React.FC<DetailDrawerProps> = ({ business, onClose, o
       setEntityDateEst(business.establishedDate ?? '');
     }
   }, [business?.id, business?.escalationNote, business?.nextWeekFocus, business?.supportNeededFromCXO, business?.cxoSupportResponse, business?.eta, business?.escalatedToManagerId, business?.name, business?.code, business?.logoUrl, business?.industry, business?.category, business?.establishedYear, business?.establishedDate]);
+
+  useEffect(() => {
+    if (business?.id) setShowCompanyProfileEdit(false);
+  }, [business?.id]);
 
   if (!business) return null;
 
@@ -249,60 +256,114 @@ export const DetailDrawer: React.FC<DetailDrawerProps> = ({ business, onClose, o
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {/* CXO: Company / Entity profile (edit from Business Entities) */}
-          {isCXO && canCXOAct && (
-            <section className="p-4 rounded-xl bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-700">
-              <div className="flex items-center gap-2 text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-3">
-                <Image size={14} /> Company details
-              </div>
-              <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mb-3">Edit this entity&apos;s name, logo, and profile. Saved here updates the entity everywhere.</p>
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-[10px] font-medium text-zinc-500 dark:text-zinc-400 mb-1">Name</label>
-                  <input type="text" value={entityName} onChange={(e) => setEntityName(e.target.value)} placeholder="Entity name" className="w-full px-3 py-2 text-sm bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-600 rounded-lg" />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-medium text-zinc-500 dark:text-zinc-400 mb-1">Code</label>
-                  <input type="text" value={entityCode} onChange={(e) => setEntityCode(e.target.value.toUpperCase().slice(0, 6))} placeholder="e.g. COX" className="w-full max-w-[100px] px-3 py-2 text-sm font-mono bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-600 rounded-lg" />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-medium text-zinc-500 dark:text-zinc-400 mb-1">Logo</label>
-                  <input ref={entityPhotoInputRef} type="file" accept="image/*" className="hidden" onChange={handleEntityPhotoSelect} />
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-lg bg-zinc-200 dark:bg-zinc-700 overflow-hidden shrink-0 flex items-center justify-center">
-                      {entityLogoUrl ? <img src={entityLogoUrl} alt="" className="w-full h-full object-cover" /> : <Image size={20} className="text-zinc-400" />}
+          {/* CXO: Status-first view. Edit profile is opt-in. */}
+          {isCXO && (
+            <>
+              {showCompanyProfileEdit && canCXOAct ? (
+                <section className="p-4 rounded-xl bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-700">
+                  <div className="flex items-center justify-between gap-2 mb-3">
+                    <span className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest">Edit company profile</span>
+                    <button type="button" onClick={() => setShowCompanyProfileEdit(false)} className="text-xs font-medium text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300">← Back to status</button>
+                  </div>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-[10px] font-medium text-zinc-500 dark:text-zinc-400 mb-1">Name</label>
+                      <input type="text" value={entityName} onChange={(e) => setEntityName(e.target.value)} placeholder="Entity name" className="w-full px-3 py-2 text-sm bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-600 rounded-lg" />
                     </div>
-                    <div className="flex flex-col gap-1">
-                      <button type="button" onClick={() => entityPhotoInputRef.current?.click()} className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-500 rounded-lg">Choose from gallery</button>
-                      {entityLogoUrl && <button type="button" onClick={() => setEntityLogoUrl('')} className="text-xs text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-400">Remove</button>}
+                    <div>
+                      <label className="block text-[10px] font-medium text-zinc-500 dark:text-zinc-400 mb-1">Code</label>
+                      <input type="text" value={entityCode} onChange={(e) => setEntityCode(e.target.value.toUpperCase().slice(0, 6))} placeholder="e.g. COX" className="w-full max-w-[100px] px-3 py-2 text-sm font-mono bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-600 rounded-lg" />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-medium text-zinc-500 dark:text-zinc-400 mb-1">Logo</label>
+                      <input ref={entityPhotoInputRef} type="file" accept="image/*" className="hidden" onChange={handleEntityPhotoSelect} />
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 rounded-lg bg-zinc-200 dark:bg-zinc-700 overflow-hidden shrink-0 flex items-center justify-center">
+                          {entityLogoUrl ? <img src={entityLogoUrl} alt="" className="w-full h-full object-cover" /> : <Image size={20} className="text-zinc-400" />}
+                        </div>
+                        <button type="button" onClick={() => entityPhotoInputRef.current?.click()} className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-500 rounded-lg">Choose from gallery</button>
+                        {entityLogoUrl && <button type="button" onClick={() => setEntityLogoUrl('')} className="text-xs text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-400">Remove</button>}
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[10px] font-medium text-zinc-500 dark:text-zinc-400 mb-1">Year established</label>
+                        <input type="number" min={1900} max={CURRENT_YEAR + 1} value={entityYearEst} onChange={(e) => setEntityYearEst(e.target.value)} placeholder="e.g. 2020" className="w-full px-3 py-2 text-sm bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-600 rounded-lg" />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-medium text-zinc-500 dark:text-zinc-400 mb-1">Date established</label>
+                        <input type="text" value={entityDateEst} onChange={(e) => setEntityDateEst(e.target.value)} placeholder="e.g. Jan 2020" className="w-full px-3 py-2 text-sm bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-600 rounded-lg" />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[10px] font-medium text-zinc-500 dark:text-zinc-400 mb-1">Industry</label>
+                        <input type="text" value={entityIndustry} onChange={(e) => setEntityIndustry(e.target.value)} placeholder="e.g. Technology" className="w-full px-3 py-2 text-sm bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-600 rounded-lg" />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-medium text-zinc-500 dark:text-zinc-400 mb-1">Category</label>
+                        <input type="text" value={entityCategory} onChange={(e) => setEntityCategory(e.target.value)} placeholder="e.g. Portfolio" className="w-full px-3 py-2 text-sm bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-600 rounded-lg" />
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button type="button" onClick={handleSaveEntityProfile} disabled={!entityName.trim() || !entityCode.trim()} className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 rounded-lg disabled:opacity-50 disabled:pointer-events-none">Save</button>
+                      <button type="button" onClick={() => setShowCompanyProfileEdit(false)} className="px-4 py-2 text-sm font-medium text-zinc-600 dark:text-zinc-400 bg-zinc-200 dark:bg-zinc-700 rounded-lg hover:bg-zinc-300 dark:hover:bg-zinc-600">Cancel</button>
                     </div>
                   </div>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="block text-[10px] font-medium text-zinc-500 dark:text-zinc-400 mb-1">Year established</label>
-                    <input type="number" min={1900} max={CURRENT_YEAR + 1} value={entityYearEst} onChange={(e) => setEntityYearEst(e.target.value)} placeholder="e.g. 2020" className="w-full px-3 py-2 text-sm bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-600 rounded-lg" />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-medium text-zinc-500 dark:text-zinc-400 mb-1">Date established</label>
-                    <input type="text" value={entityDateEst} onChange={(e) => setEntityDateEst(e.target.value)} placeholder="e.g. Jan 2020" className="w-full px-3 py-2 text-sm bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-600 rounded-lg" />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="block text-[10px] font-medium text-zinc-500 dark:text-zinc-400 mb-1">Industry</label>
-                    <input type="text" value={entityIndustry} onChange={(e) => setEntityIndustry(e.target.value)} placeholder="e.g. Technology" className="w-full px-3 py-2 text-sm bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-600 rounded-lg" />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-medium text-zinc-500 dark:text-zinc-400 mb-1">Category</label>
-                    <input type="text" value={entityCategory} onChange={(e) => setEntityCategory(e.target.value)} placeholder="e.g. Portfolio" className="w-full px-3 py-2 text-sm bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-600 rounded-lg" />
-                  </div>
-                </div>
-                <button type="button" onClick={handleSaveEntityProfile} disabled={!entityName.trim() || !entityCode.trim()} className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 rounded-lg disabled:opacity-50 disabled:pointer-events-none">
-                  Save company details
-                </button>
-              </div>
-            </section>
+                </section>
+              ) : (
+                <>
+                  {/* Status at a glance — founder sees this first */}
+                  <section className="p-4 rounded-xl border-2 border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900/50">
+                    <div className="text-[10px] font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-3">Status</div>
+                    <div className="grid grid-cols-2 gap-3 text-sm">
+                      <div>
+                        <span className="text-zinc-500 dark:text-zinc-400 block text-[10px] uppercase tracking-wider">Health</span>
+                        <HealthIndicator health={business.health} />
+                      </div>
+                      <div>
+                        <span className="text-zinc-500 dark:text-zinc-400 block text-[10px] uppercase tracking-wider">Stage</span>
+                        <StageBadge stage={business.stage} />
+                      </div>
+                      <div>
+                        <span className="text-zinc-500 dark:text-zinc-400 block text-[10px] uppercase tracking-wider">Progress</span>
+                        <span className="font-semibold text-zinc-900 dark:text-white">{business.routeProgress}/12</span>
+                      </div>
+                      <div>
+                        <span className="text-zinc-500 dark:text-zinc-400 block text-[10px] uppercase tracking-wider">ETA</span>
+                        <span className="font-medium text-zinc-900 dark:text-white">{business.eta}</span>
+                      </div>
+                    </div>
+                    <div className="mt-3 pt-3 border-t border-zinc-100 dark:border-zinc-800">
+                      <span className="text-zinc-500 dark:text-zinc-400 text-[10px] uppercase tracking-wider">Next milestone</span>
+                      <p className="text-sm font-medium text-zinc-900 dark:text-white mt-0.5">{business.nextMilestone}</p>
+                      <p className="text-[11px] text-zinc-400 dark:text-zinc-500 mt-1">Updated {business.updated}</p>
+                    </div>
+                  </section>
+                  {/* Entity info read-only + Edit profile link */}
+                  <section className="flex items-center justify-between gap-3 py-2 border-b border-zinc-100 dark:border-zinc-800">
+                    <div className="flex items-center gap-2 min-w-0">
+                      {business.logoUrl?.trim() ? (
+                        <img src={business.logoUrl} alt="" className="w-8 h-8 rounded-lg object-cover shrink-0" />
+                      ) : (
+                        <div className="w-8 h-8 rounded-lg bg-zinc-200 dark:bg-zinc-700 flex items-center justify-center text-xs font-mono font-semibold text-zinc-500 shrink-0">{business.code.slice(0, 2)}</div>
+                      )}
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold text-zinc-900 dark:text-white truncate">{business.name}</p>
+                        <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                          {[business.industry, business.category].filter(Boolean).join(' · ') || business.code}
+                        </p>
+                      </div>
+                    </div>
+                    {canCXOAct && (
+                      <button type="button" onClick={() => setShowCompanyProfileEdit(true)} className="text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline shrink-0">
+                        Edit company profile
+                      </button>
+                    )}
+                  </section>
+                </>
+              )}
+            </>
           )}
 
           {/* Next Milestone */}

@@ -24,6 +24,8 @@ import {
   ArrowUpCircle,
   FileText,
   HelpCircle,
+  Pencil,
+  Image,
 } from 'lucide-react';
 import { Business, FilterType, User, CompanySettings, CompanyProfile } from './types';
 import { BUSINESS_DATA, createDefaultCompanyProfile, DEFAULT_COMPANY_SETTINGS } from './constants';
@@ -36,14 +38,13 @@ import { ManagerWorkspace } from './components/ManagerWorkspace';
 import { MemberManagement } from './components/MemberManagement';
 import { BusinessEntitiesPanel } from './components/BusinessEntitiesPanel';
 import { ManagerProfile } from './components/ManagerProfile';
-import { CompanySettingsPanel } from './components/CompanySettingsPanel';
 
 const DEFAULT_MANAGERS: User[] = [
   {
     id: 'mgr-101',
     name: 'Kirtii Sharma',
     role: 'Manager',
-    email: 'kirtii@zeweco.ai',
+    email: 'kirtii@zeweco.com',
     avatar: 'https://i.pravatar.cc/150?u=kirtii',
     lastLogin: new Date().toISOString()
   },
@@ -51,7 +52,7 @@ const DEFAULT_MANAGERS: User[] = [
     id: 'mgr-102',
     name: 'Juhi',
     role: 'Manager',
-    email: 'juhi@zeweco.ai',
+    email: 'juhi@zeweco.com',
     avatar: 'https://i.pravatar.cc/150?u=juhi',
     lastLogin: new Date().toISOString()
   }
@@ -67,8 +68,26 @@ const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
-  const [businesses, setBusinesses] = useState<Business[]>(BUSINESS_DATA); // Fallback so dashboard shows data even when API is down
-  const [managers, setManagers] = useState<User[]>(DEFAULT_MANAGERS); // Keep managers mock for now as they aren't in API yet fully
+  const [businesses, setBusinesses] = useState<Business[]>(() => {
+    try {
+      const s = localStorage.getItem('terminal_businesses');
+      if (s) {
+        const parsed = JSON.parse(s) as Business[];
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (_) {}
+    return BUSINESS_DATA;
+  });
+  const [managers, setManagers] = useState<User[]>(() => {
+    try {
+      const s = localStorage.getItem('terminal_managers');
+      if (s) {
+        const parsed = JSON.parse(s) as User[];
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (_) {}
+    return DEFAULT_MANAGERS;
+  });
 
   const [filter, setFilter] = useState<FilterType>('All');
   const [search, setSearch] = useState('');
@@ -76,7 +95,10 @@ const App: React.FC = () => {
   const [isMembersOpen, setIsMembersOpen] = useState(false);
   const [isBusinessEntitiesOpen, setIsBusinessEntitiesOpen] = useState(false);
   const [isManagerProfileOpen, setIsManagerProfileOpen] = useState(false);
-  const [isCompanySettingsOpen, setIsCompanySettingsOpen] = useState(false);
+  const [isTerminalEditOpen, setIsTerminalEditOpen] = useState(false);
+  const [terminalEditName, setTerminalEditName] = useState('');
+  const [terminalEditLogo, setTerminalEditLogo] = useState('');
+  const terminalLogoInputRef = useRef<HTMLInputElement>(null);
   const [companyProfiles, setCompanyProfiles] = useState<CompanyProfile[]>(() => {
     try {
       const s = localStorage.getItem('terminal_company_profiles');
@@ -102,9 +124,9 @@ const App: React.FC = () => {
     const merged = base ? { ...DEFAULT_COMPANY_SETTINGS, ...base } : createDefaultCompanyProfile('default');
     return merged as CompanySettings;
   }, [companyProfiles, activeCompanyId]);
-  /** Terminal name is always from company settings (Zeweco). Logo can be first entity or company. */
+  /** Terminal name & photo: from company settings (editable in header). Fallback to first entity logo if no company logo. */
   const terminalDisplayName = companySettings.companyName || 'Zeweco';
-  const terminalDisplayLogo = businesses[0]?.logoUrl?.trim() || companySettings.logoUrl?.trim() || '';
+  const terminalDisplayLogo = companySettings.logoUrl?.trim() || businesses[0]?.logoUrl?.trim() || '';
   const [hiddenEntityIds, setHiddenEntityIds] = useState<Set<string>>(new Set());
   const [selectedBusiness, setSelectedBusiness] = useState<Business | null>(null);
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -121,14 +143,37 @@ const App: React.FC = () => {
     }
   }, [isSearchExpanded]);
 
-  // Fetch businesses on mount; use fallback data when API is down or empty so dashboard always shows
+  // Persist managers so CXO-added managers (e.g. Akash) show in Team Management after refresh
+  useEffect(() => {
+    try {
+      localStorage.setItem('terminal_managers', JSON.stringify(managers));
+    } catch (_) {}
+  }, [managers]);
+
+  // Persist businesses so manager assignments (responsible) survive refresh
+  useEffect(() => {
+    try {
+      localStorage.setItem('terminal_businesses', JSON.stringify(businesses));
+    } catch (_) {}
+  }, [businesses]);
+
+  // Fetch businesses on mount; merge with current state so we keep local assignments (responsible)
   const refreshBusinesses = async () => {
     try {
       const data = await api.getBusinesses();
-      setBusinesses(Array.isArray(data) && data.length > 0 ? data : BUSINESS_DATA);
+      const fromApi = Array.isArray(data) && data.length > 0 ? data : null;
+      setBusinesses(prev => {
+        if (!fromApi) return prev;
+        const byId = new Map(prev.map(b => [b.id, b]));
+        fromApi.forEach((d: Business) => {
+          const existing = byId.get(d.id);
+          byId.set(d.id, { ...d, responsible: existing?.responsible ?? d.responsible });
+        });
+        return Array.from(byId.values());
+      });
     } catch (error) {
       console.error('Failed to fetch businesses:', error);
-      setBusinesses(BUSINESS_DATA);
+      setBusinesses(prev => prev.length > 0 ? prev : BUSINESS_DATA);
     }
   };
 
@@ -289,6 +334,13 @@ const App: React.FC = () => {
   };
 
   useEffect(() => {
+    if (isTerminalEditOpen) {
+      setTerminalEditName(companySettings.companyName || 'Zeweco');
+      setTerminalEditLogo(companySettings.logoUrl?.trim() || businesses[0]?.logoUrl?.trim() || '');
+    }
+  }, [isTerminalEditOpen, companySettings.companyName, companySettings.logoUrl, businesses]);
+
+  useEffect(() => {
     try {
       localStorage.setItem('terminal_company_profiles', JSON.stringify(companyProfiles));
       localStorage.setItem('terminal_active_company_id', activeCompanyId);
@@ -345,26 +397,55 @@ const App: React.FC = () => {
       <header className="flex-none bg-white/80 dark:bg-black/80 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-900 px-6 py-3 transition-colors duration-300 z-50">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-zinc-900 dark:bg-zinc-800 rounded border border-zinc-800 dark:border-zinc-700 flex items-center justify-center overflow-hidden shrink-0">
-              {terminalDisplayLogo ? (
-                <img src={terminalDisplayLogo} alt="" className="w-full h-full object-cover" />
-              ) : (
-                <span className="text-xs font-bold text-white tracking-widest">
-                  {(terminalDisplayName || 'BT').slice(0, 2).toUpperCase()}
-                </span>
-              )}
-            </div>
-            <div>
-              <h1 className="text-lg font-bold tracking-tight bg-gradient-to-r from-zinc-900 to-zinc-500 dark:from-white dark:to-zinc-500 bg-clip-text text-transparent leading-none uppercase">
-                {currentUser?.role === 'CXO'
-                  ? `${(terminalDisplayName || 'Zeweco').toUpperCase()} TERMINAL`
-                  : `${(terminalDisplayName || 'Zeweco').toUpperCase()} · MANAGER WORKSPACE`}
-              </h1>
-              <div className="flex items-center gap-2 mt-1">
-                <Shield size={10} className="text-green-600 dark:text-green-500" />
-                <span className="text-[9px] font-mono text-zinc-400 dark:text-zinc-500 uppercase tracking-tighter">Secure Session: {currentUser?.id}</span>
-              </div>
-            </div>
+            {currentUser?.role === 'CXO' ? (
+              <button
+                type="button"
+                onClick={() => setIsTerminalEditOpen(true)}
+                className="flex items-center gap-3 rounded-lg p-1.5 -m-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800/80 transition-colors group"
+                title="Edit terminal name & photo"
+              >
+                <div className="w-8 h-8 bg-zinc-900 dark:bg-zinc-800 rounded border border-zinc-800 dark:border-zinc-700 flex items-center justify-center overflow-hidden shrink-0 group-hover:ring-2 group-hover:ring-blue-400/50 ring-offset-2 dark:ring-offset-zinc-950">
+                  {terminalDisplayLogo ? (
+                    <img src={terminalDisplayLogo} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="text-xs font-bold text-white tracking-widest">
+                      {(terminalDisplayName || 'BT').slice(0, 2).toUpperCase()}
+                    </span>
+                  )}
+                </div>
+                <div className="text-left">
+                  <h1 className="text-lg font-bold tracking-tight bg-gradient-to-r from-zinc-900 to-zinc-500 dark:from-white dark:to-zinc-500 bg-clip-text text-transparent leading-none uppercase">
+                    {(terminalDisplayName || 'Zeweco').toUpperCase()} TERMINAL
+                  </h1>
+                  <div className="flex items-center gap-2 mt-1">
+                    <Shield size={10} className="text-green-600 dark:text-green-500" />
+                    <span className="text-[9px] font-mono text-zinc-400 dark:text-zinc-500 uppercase tracking-tighter">Secure Session: {currentUser?.id}</span>
+                    <Pencil size={9} className="text-zinc-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                  </div>
+                </div>
+              </button>
+            ) : (
+              <>
+                <div className="w-8 h-8 bg-zinc-900 dark:bg-zinc-800 rounded border border-zinc-800 dark:border-zinc-700 flex items-center justify-center overflow-hidden shrink-0">
+                  {terminalDisplayLogo ? (
+                    <img src={terminalDisplayLogo} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="text-xs font-bold text-white tracking-widest">
+                      {(terminalDisplayName || 'BT').slice(0, 2).toUpperCase()}
+                    </span>
+                  )}
+                </div>
+                <div>
+                  <h1 className="text-lg font-bold tracking-tight bg-gradient-to-r from-zinc-900 to-zinc-500 dark:from-white dark:to-zinc-500 bg-clip-text text-transparent leading-none uppercase">
+                    {(terminalDisplayName || 'Zeweco').toUpperCase()} · MANAGER WORKSPACE
+                  </h1>
+                  <div className="flex items-center gap-2 mt-1">
+                    <Shield size={10} className="text-green-600 dark:text-green-500" />
+                    <span className="text-[9px] font-mono text-zinc-400 dark:text-zinc-500 uppercase tracking-tighter">Secure Session: {currentUser?.id}</span>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
 
           <div className="flex items-center gap-2">
@@ -372,13 +453,6 @@ const App: React.FC = () => {
             <div className="flex items-center gap-2 mr-2">
               {currentUser?.role === 'CXO' && (
                 <>
-                  <button
-                    onClick={() => setIsCompanySettingsOpen(true)}
-                    className={`p-2 rounded-lg bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400 hover:text-blue-500 transition-all ${isCompanySettingsOpen ? 'bg-blue-50 border-blue-200 text-blue-500 dark:bg-blue-900/20 dark:border-blue-800' : ''}`}
-                    title="Company settings"
-                  >
-                    <Settings size={14} />
-                  </button>
                   <button
                     onClick={() => setIsBusinessEntitiesOpen(true)}
                     className={`p-2 rounded-lg bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400 hover:text-blue-500 transition-all ${isBusinessEntitiesOpen ? 'bg-blue-50 border-blue-200 text-blue-500 dark:bg-blue-900/20 dark:border-blue-800' : ''}`}
@@ -449,9 +523,6 @@ const App: React.FC = () => {
                   <img src={currentUser?.avatar} alt="Avatar" className="w-full h-full rounded-full object-cover" />
                 </div>
                 <div className="absolute right-0 top-full mt-2 w-48 bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-2xl py-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all transform origin-top-right group-hover:translate-y-0 translate-y-2 z-50">
-                  {currentUser?.role === 'CXO' && (
-                    <button onClick={() => setIsCompanySettingsOpen(true)} className="w-full flex items-center gap-3 px-4 py-2 text-xs text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors text-left"><Settings size={14} />Company settings</button>
-                  )}
                   {currentUser?.role === 'Manager' && (
                     <button onClick={() => setIsManagerProfileOpen(true)} className="w-full flex items-center gap-3 px-4 py-2 text-xs text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors text-left"><UserIcon size={14} />Profile &amp; Settings</button>
                   )}
@@ -671,6 +742,7 @@ const App: React.FC = () => {
         onAddManager={addManager}
         onUpdateManager={updateManager}
         onDeleteManager={deleteManager}
+        onUpdateBusiness={updateBusiness}
       />
 
       <BusinessEntitiesPanel
@@ -690,26 +762,66 @@ const App: React.FC = () => {
         companyCategory={businesses[0]?.category || companySettings.category}
       />
 
-      <CompanySettingsPanel
-        isOpen={isCompanySettingsOpen}
-        onClose={() => setIsCompanySettingsOpen(false)}
-        companies={companyProfiles}
-        activeCompanyId={activeCompanyId}
-        onSwitchCompany={handleSwitchCompany}
-        onAddCompany={handleAddCompany}
-        settings={companySettings}
-        onSave={handleSaveCompanySettings}
-        businesses={businesses}
-        onUpdateBusiness={updateBusiness}
-        onOpenMemberManagement={() => { setIsCompanySettingsOpen(false); setIsMembersOpen(true); }}
-        currentUserName={currentUser?.name ?? 'CXO'}
-      />
-
       <ManagerProfile
         isOpen={isManagerProfileOpen}
         onClose={() => setIsManagerProfileOpen(false)}
         user={currentUser}
       />
+
+      {/* Terminal name & photo edit — easy peasy from header */}
+      {isTerminalEditOpen && (
+        <>
+          <div className="fixed inset-0 bg-black/20 dark:bg-black/40 z-[60]" onClick={() => setIsTerminalEditOpen(false)} />
+          <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-sm bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-xl z-[61] p-5">
+            <h3 className="text-sm font-bold text-zinc-900 dark:text-white mb-4">Terminal name & photo</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-1">Name</label>
+                <input
+                  type="text"
+                  value={terminalEditName}
+                  onChange={(e) => setTerminalEditName(e.target.value)}
+                  placeholder="e.g. Zeweco"
+                  className="w-full px-3 py-2 text-sm bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-600 rounded-lg"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-1">Photo</label>
+                <input ref={terminalLogoInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (!f?.type.startsWith('image/')) return;
+                  const r = new FileReader();
+                  r.onload = () => setTerminalEditLogo(r.result as string);
+                  r.readAsDataURL(f);
+                  e.target.value = '';
+                }} />
+                <div className="flex items-center gap-3">
+                  <div className="w-14 h-14 rounded-xl bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 overflow-hidden flex items-center justify-center shrink-0">
+                    {terminalEditLogo ? <img src={terminalEditLogo} alt="" className="w-full h-full object-cover" /> : <Image size={22} className="text-zinc-400" />}
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <button type="button" onClick={() => terminalLogoInputRef.current?.click()} className="px-3 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 rounded-lg">Choose photo</button>
+                    {terminalEditLogo && <button type="button" onClick={() => setTerminalEditLogo('')} className="text-xs text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-400">Remove</button>}
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-2 mt-5">
+              <button type="button" onClick={() => setIsTerminalEditOpen(false)} className="flex-1 py-2 text-sm font-medium text-zinc-600 dark:text-zinc-400 bg-zinc-100 dark:bg-zinc-800 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-700">Cancel</button>
+              <button
+                type="button"
+                onClick={() => {
+                  handleSaveCompanySettings({ ...companySettings, companyName: terminalEditName.trim() || 'Zeweco', logoUrl: terminalEditLogo });
+                  setIsTerminalEditOpen(false);
+                }}
+                className="flex-1 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-lg"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 };

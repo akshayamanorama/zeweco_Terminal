@@ -21,34 +21,34 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
 
   // Demo credentials (match server seed) – used when backend is unavailable or for quick access
   const DEMO_USERS: Record<string, { user: UserType; password: string }> = {
-    'akshaya@zeweco.ai': {
+    'akshaya@zeweco.com': {
       user: {
         id: 'cxo-1',
         name: 'Akshaya',
         role: 'CXO',
-        email: 'akshaya@zeweco.ai',
+        email: 'akshaya@zeweco.com',
         avatar: 'https://i.pravatar.cc/150?u=akshaya',
         lastLogin: new Date().toISOString(),
       },
       password: '123456',
     },
-    'kirtii@zeweco.ai': {
+    'kirtii@zeweco.com': {
       user: {
         id: 'mgr-101',
         name: 'Kirtii Sharma',
         role: 'Manager',
-        email: 'kirtii@zeweco.ai',
+        email: 'kirtii@zeweco.com',
         avatar: 'https://i.pravatar.cc/150?u=kirtii',
         lastLogin: new Date().toISOString(),
       },
       password: 'password',
     },
-    'juhi@zeweco.ai': {
+    'juhi@zeweco.com': {
       user: {
         id: 'mgr-102',
         name: 'Juhi',
         role: 'Manager',
-        email: 'juhi@zeweco.ai',
+        email: 'juhi@zeweco.com',
         avatar: 'https://i.pravatar.cc/150?u=juhi',
         lastLogin: new Date().toISOString(),
       },
@@ -58,7 +58,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
 
   const handleRoleSelect = (role: 'CXO' | 'Manager') => {
     setSelectedRole(role);
-    setEmail(role === 'CXO' ? 'akshaya@zeweco.ai' : 'kirtii@zeweco.ai');
+    setEmail(role === 'CXO' ? 'akshaya@zeweco.com' : 'kirtii@zeweco.com');
     setView('credentials');
     setError(null);
   };
@@ -81,14 +81,17 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
       const localUser = getLocalCredentials(email, password);
       if (localUser) {
         onLogin(localUser);
+        setError(null);
       } else {
         const demo = DEMO_USERS[emailLower];
         if (demo && demo.password === password) {
           onLogin(demo.user);
+          setError(null);
         } else {
           setError('Invalid credentials');
         }
       }
+    } finally {
       setIsAuthenticating(false);
     }
   };
@@ -168,7 +171,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="name@zeweco.ai"
+                    placeholder="name@zeweco.com"
                     className="w-full bg-zinc-100 dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800 rounded-xl py-3.5 pl-12 pr-4 text-sm text-zinc-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all placeholder:text-zinc-400 dark:placeholder:text-zinc-600"
                   />
                 </div>

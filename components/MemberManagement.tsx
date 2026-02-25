@@ -33,6 +33,8 @@ interface MemberManagementProps {
   onAddManager: (manager: User) => void;
   onUpdateManager?: (id: string, updates: Partial<Pick<User, 'email' | 'permissions'>>) => void;
   onDeleteManager: (id: string) => void;
+  /** Update business (e.g. set responsible) so manager sees assigned entities after login */
+  onUpdateBusiness?: (updated: Business) => void;
 }
 
 export const MemberManagement: React.FC<MemberManagementProps> = ({
@@ -42,7 +44,8 @@ export const MemberManagement: React.FC<MemberManagementProps> = ({
   businesses = [],
   onAddManager,
   onUpdateManager,
-  onDeleteManager
+  onDeleteManager,
+  onUpdateBusiness,
 }) => {
   const [isAdding, setIsAdding] = useState(false);
   const [selectedManager, setSelectedManager] = useState<User | null>(null);
@@ -161,13 +164,16 @@ export const MemberManagement: React.FC<MemberManagementProps> = ({
       id: `mgr-${Date.now()}`,
       name: newName,
       role: 'Manager',
-      email: newEmail,
-      avatar: `https://i.pravatar.cc/150?u=${newEmail}`,
+      email: newEmail.trim(),
+      avatar: `https://i.pravatar.cc/150?u=${encodeURIComponent(newEmail)}`,
       lastLogin: 'Never',
       permissions: []
     };
 
     onAddManager(newManager);
+    if (newPassword) {
+      saveCredentialsLocally(newManager.email, newPassword, newManager);
+    }
     setNewName('');
     setNewEmail('');
     setNewPassword('');
@@ -177,11 +183,25 @@ export const MemberManagement: React.FC<MemberManagementProps> = ({
   const assignedBusinesses = selectedManager
     ? businesses.filter(b => assignedIds.has(b.id))
     : [];
+  const unassignedBusinesses = selectedManager
+    ? businesses.filter(b => !assignedIds.has(b.id))
+    : [];
   const assignedCount = assignedBusinesses.length;
   const totalCount = businesses.length;
 
-  const handleUnassign = (businessId: string) => {
-    setAssignedIds(prev => { const n = new Set(prev); n.delete(businessId); return n; });
+  const handleAssign = (biz: Business) => {
+    if (!selectedManager || !onUpdateBusiness) return;
+    onUpdateBusiness({ ...biz, responsible: selectedManager.name });
+    setAssignedIds(prev => new Set([...prev, biz.id]));
+  };
+
+  const handleUnassign = (biz: Business) => {
+    if (!onUpdateBusiness) {
+      setAssignedIds(prev => { const n = new Set(prev); n.delete(biz.id); return n; });
+      return;
+    }
+    onUpdateBusiness({ ...biz, responsible: 'NA' });
+    setAssignedIds(prev => { const n = new Set(prev); n.delete(biz.id); return n; });
   };
 
   if (!isOpen) return null;
@@ -295,8 +315,8 @@ export const MemberManagement: React.FC<MemberManagementProps> = ({
                   <h4 className="text-[10px] font-semibold text-zinc-600 dark:text-zinc-400 uppercase tracking-[0.12em]">Assigned Projects</h4>
                   <span className="text-sm font-medium text-zinc-600 dark:text-zinc-400 ml-auto">{assignedCount} of {totalCount}</span>
                 </div>
-                <p className="text-xs text-zinc-500 dark:text-zinc-400">Only assigned businesses are visible to this manager in their login.</p>
-                <div className="space-y-2 max-h-48 overflow-y-auto">
+                <p className="text-xs text-zinc-500 dark:text-zinc-400">Only assigned businesses are visible to this manager in their login. Assign or unassign below.</p>
+                <div className="space-y-2 max-h-40 overflow-y-auto">
                   {assignedBusinesses.slice(0, 20).map(biz => (
                     <div key={biz.id} className="flex items-center justify-between gap-2 p-3 bg-zinc-50 dark:bg-zinc-900/30 border border-zinc-200 dark:border-zinc-800 rounded-xl">
                       <div className="flex items-center gap-3 min-w-0">
@@ -310,7 +330,7 @@ export const MemberManagement: React.FC<MemberManagementProps> = ({
                       </div>
                       <button
                         type="button"
-                        onClick={() => handleUnassign(biz.id)}
+                        onClick={() => handleUnassign(biz)}
                         className="shrink-0 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 px-2.5 py-1.5 rounded-lg transition-colors"
                       >
                         Unassign
@@ -318,6 +338,28 @@ export const MemberManagement: React.FC<MemberManagementProps> = ({
                     </div>
                   ))}
                 </div>
+                {unassignedBusinesses.length > 0 && (
+                  <div className="space-y-1.5 mt-3">
+                    <p className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-500 uppercase tracking-wider">Assign project</p>
+                    <div className="space-y-1 max-h-32 overflow-y-auto">
+                      {unassignedBusinesses.slice(0, 15).map(biz => (
+                        <div key={biz.id} className="flex items-center justify-between gap-2 p-2.5 bg-white dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-700 rounded-lg">
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100 truncate">{biz.name}</p>
+                            <p className="text-[10px] text-zinc-500 dark:text-zinc-400">{biz.code}</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleAssign(biz)}
+                            className="shrink-0 text-xs font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 px-2.5 py-1.5 rounded-lg transition-colors"
+                          >
+                            Assign
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="pt-2">
@@ -410,7 +452,7 @@ export const MemberManagement: React.FC<MemberManagementProps> = ({
                     type="email"
                     value={newEmail}
                     onChange={(e) => setNewEmail(e.target.value)}
-                    placeholder="name@zeweco.ai"
+                    placeholder="name@zeweco.com"
                     className="w-full bg-zinc-100 dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800 rounded-xl py-3 pl-11 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                   />
                 </div>
