@@ -45,6 +45,10 @@ export interface Business {
   /** Entity-level industry/category (editable in Company Settings) */
   industry?: string;
   category?: string;
+  /** Year established (e.g. 2020) */
+  establishedYear?: number;
+  /** Date established (e.g. 2020-01-15 or "Jan 2020") */
+  establishedDate?: string;
   stage: Stage;
   health: Health;
   routeProgress: number; // Calculated as (tasks_done / total_tasks) * 12
@@ -76,28 +80,84 @@ export type ReportingCycle = 'weekly' | 'monthly';
 export type NotificationMethod = 'email' | 'in-app' | 'both';
 export type EntityPriorityLevel = 'High' | 'Medium' | 'Low';
 
-/** CXO company and governance settings */
+/** Permission keys for managers (toggle-based in Role & Access) */
+export type ManagerPermissionKey =
+  | 'can_manage_team'
+  | 'can_delete_tasks'
+  | 'can_edit_entity_profile'
+  | 'can_view_financial_data'
+  | 'can_raise_escalation'
+  | 'can_update_milestones';
+
+export type KpiUpdateFrequency = 'daily' | 'weekly' | 'monthly';
+
+/** Health/status labels for entity governance (display names) */
+export type HealthStatusLabel = 'On Track' | 'At Risk' | 'Stale';
+
+/** CXO company and governance settings (MVP) */
 export interface CompanySettings {
+  // --- Organization ---
   companyName: string;
-  /** Logo image: URL or data URL (from gallery upload) */
+  companyCode: string;
   logoUrl: string;
   industry: string;
   category: string;
-  fiscalYearStartMonth: number; // 1-12
+  /** Year established (e.g. 2020) */
+  establishedYear?: number;
+  fiscalYearStartMonth: number;
   defaultTimezone: string;
   reportingCycle: ReportingCycle;
-  defaultStages: Stage[]; // order/labels for entity stages
-  /** Overdue items count that triggers "At Risk" */
+
+  // --- Role & Access (default permissions for new managers) ---
+  defaultManagerPermissions: ManagerPermissionKey[];
+
+  // --- Entity Governance ---
+  defaultStages: Stage[];
+  /** Health status labels shown in UI */
+  healthStatusLabels: HealthStatusLabel[];
+  /** Overdue count that triggers "At Risk" */
   escalationThresholdOverdue: number;
+  /** Default number of milestones per entity template */
+  defaultMilestoneCountTemplate: number;
   entityArchivingEnabled: boolean;
   entityPriorityLevels: EntityPriorityLevel[];
+
+  // --- KPI & Reporting ---
+  kpiUpdateFrequency: KpiUpdateFrequency;
+  requireWeeklyManagerReport: boolean;
+  weeklyReportTemplateFields: string[];
+  lockKpiTargetEditing: boolean;
+  enableKpiCommentary: boolean;
+  autoReminderManagerUpdates: boolean;
+
+  // --- Financial Control (MVP) ---
+  financialModuleEnabled: boolean;
+  budgetApprovalRequired: boolean;
+  budgetAlertThresholdPercent: number;
+  managerFinancialVisibility: boolean;
+
+  // --- Notifications & Alerts ---
   riskAlertNotifications: boolean;
   overdueAlerts: boolean;
   deadlineAlerts: boolean;
+  escalationAlerts: boolean;
+  dailyExecutiveSummary: boolean;
+  /** Time for daily summary e.g. "09:00" */
+  summaryDeliveryTime: string;
   notificationMethod: NotificationMethod;
 }
 
 /** Company profile with id for multi-company support */
 export interface CompanyProfile extends CompanySettings {
   id: string;
+}
+
+/** Audit entry for settings changes (backend-ready shape) */
+export interface SettingsAuditEntry {
+  id: string;
+  section: string;
+  changedBy: string;
+  timestamp: string;
+  previousValue: unknown;
+  newValue: unknown;
 }

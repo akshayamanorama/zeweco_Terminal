@@ -1,23 +1,47 @@
 
-import { Business, Checklist, CompanySettings, Stage, CompanyProfile } from './types';
+import { Business, Checklist, CompanySettings, Stage, CompanyProfile, HealthStatusLabel } from './types';
 
 const STAGES: Stage[] = ['Foundation', 'Design', 'Prototype', 'Launch', 'Traction', 'Scale'];
+const HEALTH_LABELS: HealthStatusLabel[] = ['On Track', 'At Risk', 'Stale'];
 
 export const DEFAULT_COMPANY_SETTINGS: CompanySettings = {
   companyName: 'Zeweco',
+  companyCode: 'ZWC',
   logoUrl: '',
   industry: 'Technology',
   category: 'Portfolio & Innovation',
-  fiscalYearStartMonth: 4, // April
+  establishedYear: undefined,
+  fiscalYearStartMonth: 4,
   defaultTimezone: 'Asia/Kolkata',
   reportingCycle: 'weekly',
+
+  defaultManagerPermissions: ['can_edit_entity_profile', 'can_raise_escalation', 'can_update_milestones'],
+
   defaultStages: [...STAGES],
+  healthStatusLabels: [...HEALTH_LABELS],
   escalationThresholdOverdue: 3,
+  defaultMilestoneCountTemplate: 6,
   entityArchivingEnabled: true,
   entityPriorityLevels: ['High', 'Medium', 'Low'],
+
+  kpiUpdateFrequency: 'weekly',
+  requireWeeklyManagerReport: true,
+  weeklyReportTemplateFields: ['Progress', 'Blockers', 'Next week focus'],
+  lockKpiTargetEditing: false,
+  enableKpiCommentary: true,
+  autoReminderManagerUpdates: true,
+
+  financialModuleEnabled: false,
+  budgetApprovalRequired: true,
+  budgetAlertThresholdPercent: 10,
+  managerFinancialVisibility: false,
+
   riskAlertNotifications: true,
   overdueAlerts: true,
   deadlineAlerts: true,
+  escalationAlerts: true,
+  dailyExecutiveSummary: false,
+  summaryDeliveryTime: '09:00',
   notificationMethod: 'in-app',
 };
 
@@ -27,6 +51,9 @@ export function createDefaultCompanyProfile(id: string, name?: string): CompanyP
     ...DEFAULT_COMPANY_SETTINGS,
     companyName: name || DEFAULT_COMPANY_SETTINGS.companyName,
     defaultStages: [...DEFAULT_COMPANY_SETTINGS.defaultStages],
+    defaultManagerPermissions: [...DEFAULT_COMPANY_SETTINGS.defaultManagerPermissions],
+    healthStatusLabels: [...DEFAULT_COMPANY_SETTINGS.healthStatusLabels],
+    weeklyReportTemplateFields: [...DEFAULT_COMPANY_SETTINGS.weeklyReportTemplateFields],
   };
 }
 

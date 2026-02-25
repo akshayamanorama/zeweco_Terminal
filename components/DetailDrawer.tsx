@@ -1,7 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { X, CheckCircle2, Clock, Activity, Target, AlertTriangle, ArrowUpCircle, Calendar, HelpCircle, Plus, Trash2, Shield, MessageSquare } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { X, CheckCircle2, Clock, Activity, Target, AlertTriangle, ArrowUpCircle, Calendar, HelpCircle, Plus, Trash2, Shield, MessageSquare, Image } from 'lucide-react';
 import { Business, Risk, RiskSeverity, Health, User, UserRole } from '../types';
 import { StageBadge, HealthIndicator, SeverityBadge } from './Badge';
+
+const CURRENT_YEAR = new Date().getFullYear();
 
 const SEVERITY_OPTIONS: RiskSeverity[] = ['Low', 'Medium', 'High', 'Critical'];
 
@@ -31,6 +33,14 @@ export const DetailDrawer: React.FC<DetailDrawerProps> = ({ business, onClose, o
   const [tempEta, setTempEta] = useState(business?.eta ?? '');
   const [editingHealth, setEditingHealth] = useState(false);
   const [lastSavedFeedback, setLastSavedFeedback] = useState<string | null>(null);
+  const [entityName, setEntityName] = useState(business?.name ?? '');
+  const [entityCode, setEntityCode] = useState(business?.code ?? '');
+  const [entityLogoUrl, setEntityLogoUrl] = useState(business?.logoUrl ?? '');
+  const [entityIndustry, setEntityIndustry] = useState(business?.industry ?? '');
+  const [entityCategory, setEntityCategory] = useState(business?.category ?? '');
+  const [entityYearEst, setEntityYearEst] = useState(business?.establishedYear ? String(business.establishedYear) : '');
+  const [entityDateEst, setEntityDateEst] = useState(business?.establishedDate ?? '');
+  const entityPhotoInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (business) {
@@ -39,8 +49,15 @@ export const DetailDrawer: React.FC<DetailDrawerProps> = ({ business, onClose, o
       setSupportNeeded(business.supportNeededFromCXO ?? '');
       setCxoSupportResponse(business.cxoSupportResponse ?? '');
       setTempEta(business.eta ?? '');
+      setEntityName(business.name);
+      setEntityCode(business.code);
+      setEntityLogoUrl(business.logoUrl ?? '');
+      setEntityIndustry(business.industry ?? '');
+      setEntityCategory(business.category ?? '');
+      setEntityYearEst(business.establishedYear ? String(business.establishedYear) : '');
+      setEntityDateEst(business.establishedDate ?? '');
     }
-  }, [business?.id, business?.escalationNote, business?.nextWeekFocus, business?.supportNeededFromCXO, business?.cxoSupportResponse, business?.eta, business?.escalatedToManagerId]);
+  }, [business?.id, business?.escalationNote, business?.nextWeekFocus, business?.supportNeededFromCXO, business?.cxoSupportResponse, business?.eta, business?.escalatedToManagerId, business?.name, business?.code, business?.logoUrl, business?.industry, business?.category, business?.establishedYear, business?.establishedDate]);
 
   if (!business) return null;
 
@@ -151,6 +168,32 @@ export const DetailDrawer: React.FC<DetailDrawerProps> = ({ business, onClose, o
     }, 'Response saved');
   };
 
+  const handleEntityPhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !file.type.startsWith('image/')) return;
+    const reader = new FileReader();
+    reader.onload = () => setEntityLogoUrl(reader.result as string);
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  const handleSaveEntityProfile = () => {
+    const name = entityName.trim();
+    const code = entityCode.trim().toUpperCase().slice(0, 6);
+    if (!name || !code) return;
+    const yearNum = entityYearEst.trim() ? Math.min(CURRENT_YEAR + 1, Math.max(1900, parseInt(entityYearEst, 10) || 0)) : undefined;
+    applyUpdate({
+      name,
+      code,
+      logoUrl: entityLogoUrl.trim() || undefined,
+      industry: entityIndustry.trim() || undefined,
+      category: entityCategory.trim() || undefined,
+      establishedYear: yearNum,
+      establishedDate: entityDateEst.trim() || undefined,
+      updated: 'Today',
+    }, 'Company details saved');
+  };
+
   const canEditActions = Boolean(onUpdateBusiness);
   const canManagerEdit = canEditActions && !isCXO;
   const canCXOAct = canEditActions && isCXO;
@@ -206,6 +249,62 @@ export const DetailDrawer: React.FC<DetailDrawerProps> = ({ business, onClose, o
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          {/* CXO: Company / Entity profile (edit from Business Entities) */}
+          {isCXO && canCXOAct && (
+            <section className="p-4 rounded-xl bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-700">
+              <div className="flex items-center gap-2 text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-3">
+                <Image size={14} /> Company details
+              </div>
+              <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mb-3">Edit this entity&apos;s name, logo, and profile. Saved here updates the entity everywhere.</p>
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-[10px] font-medium text-zinc-500 dark:text-zinc-400 mb-1">Name</label>
+                  <input type="text" value={entityName} onChange={(e) => setEntityName(e.target.value)} placeholder="Entity name" className="w-full px-3 py-2 text-sm bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-600 rounded-lg" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-medium text-zinc-500 dark:text-zinc-400 mb-1">Code</label>
+                  <input type="text" value={entityCode} onChange={(e) => setEntityCode(e.target.value.toUpperCase().slice(0, 6))} placeholder="e.g. COX" className="w-full max-w-[100px] px-3 py-2 text-sm font-mono bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-600 rounded-lg" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-medium text-zinc-500 dark:text-zinc-400 mb-1">Logo</label>
+                  <input ref={entityPhotoInputRef} type="file" accept="image/*" className="hidden" onChange={handleEntityPhotoSelect} />
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-lg bg-zinc-200 dark:bg-zinc-700 overflow-hidden shrink-0 flex items-center justify-center">
+                      {entityLogoUrl ? <img src={entityLogoUrl} alt="" className="w-full h-full object-cover" /> : <Image size={20} className="text-zinc-400" />}
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <button type="button" onClick={() => entityPhotoInputRef.current?.click()} className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-500 rounded-lg">Choose from gallery</button>
+                      {entityLogoUrl && <button type="button" onClick={() => setEntityLogoUrl('')} className="text-xs text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-400">Remove</button>}
+                    </div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[10px] font-medium text-zinc-500 dark:text-zinc-400 mb-1">Year established</label>
+                    <input type="number" min={1900} max={CURRENT_YEAR + 1} value={entityYearEst} onChange={(e) => setEntityYearEst(e.target.value)} placeholder="e.g. 2020" className="w-full px-3 py-2 text-sm bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-600 rounded-lg" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-medium text-zinc-500 dark:text-zinc-400 mb-1">Date established</label>
+                    <input type="text" value={entityDateEst} onChange={(e) => setEntityDateEst(e.target.value)} placeholder="e.g. Jan 2020" className="w-full px-3 py-2 text-sm bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-600 rounded-lg" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[10px] font-medium text-zinc-500 dark:text-zinc-400 mb-1">Industry</label>
+                    <input type="text" value={entityIndustry} onChange={(e) => setEntityIndustry(e.target.value)} placeholder="e.g. Technology" className="w-full px-3 py-2 text-sm bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-600 rounded-lg" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-medium text-zinc-500 dark:text-zinc-400 mb-1">Category</label>
+                    <input type="text" value={entityCategory} onChange={(e) => setEntityCategory(e.target.value)} placeholder="e.g. Portfolio" className="w-full px-3 py-2 text-sm bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-600 rounded-lg" />
+                  </div>
+                </div>
+                <button type="button" onClick={handleSaveEntityProfile} disabled={!entityName.trim() || !entityCode.trim()} className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 rounded-lg disabled:opacity-50 disabled:pointer-events-none">
+                  Save company details
+                </button>
+              </div>
+            </section>
+          )}
+
           {/* Next Milestone */}
           <section>
             <div className="flex items-center gap-2 text-xs font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-widest mb-3">

@@ -1,10 +1,51 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { X, Image, Calendar, Globe, RotateCcw, Layers, AlertTriangle, Archive, Flag, Bell, ChevronUp, ChevronDown, LayoutGrid } from 'lucide-react';
-import type { CompanySettings, Stage, ReportingCycle, NotificationMethod, EntityPriorityLevel, CompanyProfile, Business } from '../types';
+import React, { useState, useEffect } from 'react';
+import {
+  X,
+  Calendar,
+  Building2,
+  Shield,
+  LayoutGrid,
+  BarChart3,
+  Wallet,
+  Bell,
+  Check,
+  ChevronRight,
+  Users,
+} from 'lucide-react';
+import type {
+  CompanySettings,
+  ReportingCycle,
+  CompanyProfile,
+  Business,
+  ManagerPermissionKey,
+  KpiUpdateFrequency,
+  EntityPriorityLevel,
+  SettingsAuditEntry,
+} from '../types';
+import { DEFAULT_COMPANY_SETTINGS } from '../constants';
 
-const STAGES: Stage[] = ['Foundation', 'Design', 'Prototype', 'Launch', 'Traction', 'Scale'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const TIMEZONES = ['Asia/Kolkata', 'America/New_York', 'Europe/London', 'UTC', 'Asia/Singapore', 'Australia/Sydney'];
+
+type SettingsSectionId = 'organization' | 'role-access' | 'entity-governance' | 'kpi-reporting' | 'financial' | 'notifications';
+
+const SECTIONS: { id: SettingsSectionId; label: string; icon: React.ReactNode }[] = [
+  { id: 'organization', label: 'Organization', icon: <Building2 size={18} /> },
+  { id: 'role-access', label: 'Role & Access', icon: <Shield size={18} /> },
+  { id: 'entity-governance', label: 'Entity Governance', icon: <LayoutGrid size={18} /> },
+  { id: 'kpi-reporting', label: 'KPI & Reporting', icon: <BarChart3 size={18} /> },
+  { id: 'financial', label: 'Financial Control', icon: <Wallet size={18} /> },
+  { id: 'notifications', label: 'Notifications & Alerts', icon: <Bell size={18} /> },
+];
+
+const MANAGER_PERMISSIONS: { key: ManagerPermissionKey; label: string; desc: string }[] = [
+  { key: 'can_manage_team', label: 'Manage Team Members', desc: 'Can add or remove other managers' },
+  { key: 'can_delete_tasks', label: 'Delete Tasks', desc: 'Can delete tasks' },
+  { key: 'can_edit_entity_profile', label: 'Edit Entity Profile', desc: 'Can edit entity name, logo, industry' },
+  { key: 'can_view_financial_data', label: 'View Financial Data', desc: 'Can view financial data' },
+  { key: 'can_raise_escalation', label: 'Raise Escalation', desc: 'Can escalate to CXO' },
+  { key: 'can_update_milestones', label: 'Update Milestones', desc: 'Can update milestones' },
+];
 
 interface CompanySettingsPanelProps {
   isOpen: boolean;
@@ -15,9 +56,15 @@ interface CompanySettingsPanelProps {
   onAddCompany: () => void;
   settings: CompanySettings;
   onSave: (settings: CompanySettings) => void;
-  /** Business entities from dashboard – choose one to edit name, photo, settings */
   businesses: Business[];
   onUpdateBusiness: (updated: Business) => void;
+  onOpenMemberManagement?: () => void;
+  onAudit?: (entry: SettingsAuditEntry) => void;
+  currentUserName?: string;
+}
+
+function mergeWithDefaults(s: CompanySettings): CompanySettings {
+  return { ...DEFAULT_COMPANY_SETTINGS, ...s } as CompanySettings;
 }
 
 export const CompanySettingsPanel: React.FC<CompanySettingsPanelProps> = ({
@@ -31,345 +78,397 @@ export const CompanySettingsPanel: React.FC<CompanySettingsPanelProps> = ({
   onSave,
   businesses,
   onUpdateBusiness,
+  onOpenMemberManagement,
+  onAudit,
+  currentUserName = 'CXO',
 }) => {
-  const [form, setForm] = useState<CompanySettings>(settings);
-  const entityPhotoInputRef = useRef<HTMLInputElement>(null);
-
-  const [selectedEntityId, setSelectedEntityId] = useState<string>(() => businesses[0]?.id ?? '');
-  const selectedEntity = businesses.find((b) => b.id === selectedEntityId) ?? businesses[0];
-  const [entityName, setEntityName] = useState(selectedEntity?.name ?? '');
-  const [entityCode, setEntityCode] = useState(selectedEntity?.code ?? '');
-  const [entityLogoUrl, setEntityLogoUrl] = useState(selectedEntity?.logoUrl ?? '');
-  const [entityIndustry, setEntityIndustry] = useState(selectedEntity?.industry ?? '');
-  const [entityCategory, setEntityCategory] = useState(selectedEntity?.category ?? '');
+  const [form, setForm] = useState<CompanySettings>(() => mergeWithDefaults(settings));
+  const [activeSection, setActiveSection] = useState<SettingsSectionId>('organization');
+  const [confirmModal, setConfirmModal] = useState<{ message: string; onConfirm: () => void } | null>(null);
+  const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
 
   useEffect(() => {
-    if (businesses.length > 0 && !businesses.some((b) => b.id === selectedEntityId)) {
-      setSelectedEntityId(businesses[0].id);
-    }
-  }, [businesses, selectedEntityId]);
-
-  useEffect(() => {
-    if (isOpen) setForm(settings);
+    if (isOpen) setForm(mergeWithDefaults(settings));
   }, [isOpen, settings, activeCompanyId]);
-
-  useEffect(() => {
-    if (selectedEntity) {
-      setEntityName(selectedEntity.name);
-      setEntityCode(selectedEntity.code);
-      setEntityLogoUrl(selectedEntity.logoUrl ?? '');
-      setEntityIndustry(selectedEntity.industry ?? '');
-      setEntityCategory(selectedEntity.category ?? '');
-    }
-  }, [selectedEntityId, selectedEntity]);
 
   if (!isOpen) return null;
 
-  const handleSave = () => {
-    onSave(form);
-    onClose();
-  };
-
-  const handleEntityPhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !file.type.startsWith('image/')) return;
-    const reader = new FileReader();
-    reader.onload = () => setEntityLogoUrl(reader.result as string);
-    reader.readAsDataURL(file);
-    e.target.value = '';
-  };
-
-  const handleSaveEntity = () => {
-    if (!selectedEntity) return;
-    onUpdateBusiness({
-      ...selectedEntity,
-      name: entityName.trim() || selectedEntity.name,
-      code: (entityCode.trim() || selectedEntity.code).toUpperCase().slice(0, 6),
-      logoUrl: entityLogoUrl.trim() || undefined,
-      industry: entityIndustry.trim() || undefined,
-      category: entityCategory.trim() || undefined,
+  const recordAudit = (section: string, previousValue: unknown, newValue: unknown) => {
+    onAudit?.({
+      id: `audit-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+      section,
+      changedBy: currentUserName,
+      timestamp: new Date().toISOString(),
+      previousValue,
+      newValue,
     });
+  };
+
+  const saveSection = (sectionId: SettingsSectionId, sectionName: string) => {
+    const prev = { ...form };
+    onSave(form);
+    recordAudit(sectionName, prev, form);
+    setSaveSuccess(`${sectionName} saved.`);
+    setTimeout(() => setSaveSuccess(null), 3000);
+  };
+
+  const togglePermission = (key: ManagerPermissionKey) => {
+    setForm((f) => ({
+      ...f,
+      defaultManagerPermissions: f.defaultManagerPermissions.includes(key)
+        ? f.defaultManagerPermissions.filter((p) => p !== key)
+        : [...f.defaultManagerPermissions, key],
+    }));
   };
 
   return (
     <>
       <div className="fixed inset-0 bg-black/20 dark:bg-black/40 z-40" onClick={onClose} />
-      <div className="fixed top-0 right-0 h-full w-full max-w-lg bg-white dark:bg-zinc-950 border-l border-zinc-200 dark:border-zinc-800 shadow-2xl z-50 flex flex-col">
+      <div className="fixed top-0 right-0 h-full w-full max-w-2xl bg-white dark:bg-zinc-950 border-l border-zinc-200 dark:border-zinc-800 shadow-2xl z-50 flex flex-col">
         <div className="p-4 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between shrink-0">
-          <h2 className="text-lg font-bold text-zinc-900 dark:text-white">Company settings</h2>
+          <h2 className="text-lg font-bold text-zinc-900 dark:text-white">CXO Settings</h2>
           <button onClick={onClose} className="p-2 rounded-lg text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800">
             <X size={20} />
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto p-4 space-y-6">
-          {/* Business entity: choose company → name, profile photo, industry, category */}
-          <section className="pb-6 border-b border-zinc-200 dark:border-zinc-800">
-            <h3 className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-3 flex items-center gap-2">
-              <LayoutGrid size={14} /> Business entity
-            </h3>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider mb-1.5">Choose company</label>
-                <select
-                  value={selectedEntityId}
-                  onChange={(e) => setSelectedEntityId(e.target.value)}
-                  className="w-full px-3 py-2.5 text-sm bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg focus:ring-2 focus:ring-blue-500/30 font-medium text-zinc-900 dark:text-white"
-                >
-                  {businesses.length === 0 ? (
-                    <option value="">No business entities yet</option>
-                  ) : (
-                    businesses.map((b) => (
-                      <option key={b.id} value={b.id}>{b.name} ({b.code})</option>
-                    ))
-                  )}
-                </select>
+
+        <div className="flex flex-1 min-h-0">
+          {/* Left sidebar */}
+          <nav className="w-48 shrink-0 border-r border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/50 flex flex-col py-2">
+            {SECTIONS.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => setActiveSection(s.id)}
+                className={`flex items-center gap-2 px-3 py-2.5 text-left text-sm font-medium transition-colors ${
+                  activeSection === s.id
+                    ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-r-2 border-blue-600 dark:border-blue-400'
+                    : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                }`}
+              >
+                {s.icon}
+                <span className="flex-1">{s.label}</span>
+                <ChevronRight size={14} className={activeSection === s.id ? 'opacity-100' : 'opacity-40'} />
+              </button>
+            ))}
+          </nav>
+
+          {/* Main content */}
+          <div className="flex-1 overflow-y-auto p-5">
+            {saveSuccess && (
+              <div className="mb-4 flex items-center gap-2 rounded-lg bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200 px-3 py-2 text-sm">
+                <Check size={16} /> {saveSuccess}
               </div>
-              {selectedEntity && (
-                <>
-                  <div>
-                    <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider mb-1.5">Name</label>
-                    <input
-                      type="text"
-                      value={entityName}
-                      onChange={(e) => setEntityName(e.target.value)}
-                      placeholder="Entity name"
-                      className="w-full px-3 py-2 text-sm bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg focus:ring-2 focus:ring-blue-500/30 font-medium"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider mb-1.5">Code</label>
-                    <input
-                      type="text"
-                      value={entityCode}
-                      onChange={(e) => setEntityCode(e.target.value.toUpperCase().slice(0, 6))}
-                      placeholder="e.g. COX"
-                      className="w-full px-3 py-2 text-sm bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg focus:ring-2 focus:ring-blue-500/30 font-mono max-w-[120px]"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
-                      <Image size={12} /> Logo (from gallery)
-                    </label>
-                    <input
-                      ref={entityPhotoInputRef}
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={handleEntityPhotoSelect}
-                    />
-                    <div className="flex items-center gap-4">
-                      <div className="w-16 h-16 rounded-xl bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 overflow-hidden shrink-0 flex items-center justify-center">
-                        {entityLogoUrl ? (
-                          <img src={entityLogoUrl} alt="" className="w-full h-full object-cover" />
-                        ) : (
-                          <Image size={24} className="text-zinc-400 dark:text-zinc-500" />
-                        )}
-                      </div>
-                      <div className="flex flex-col gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => entityPhotoInputRef.current?.click()}
-                          className="px-4 py-2.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 rounded-lg transition-colors"
-                        >
-                          Choose from gallery
-                        </button>
-                        {entityLogoUrl && (
-                          <button type="button" onClick={() => setEntityLogoUrl('')} className="text-sm font-medium text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors">
-                            Remove logo
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
+            )}
+
+            {/* 1. Organization (reporting only; edit company/entity in Zeweco · Business Entities) */}
+            {activeSection === 'organization' && (
+              <div className="space-y-5">
+                <h3 className="text-sm font-bold text-zinc-800 dark:text-zinc-200 uppercase tracking-wider flex items-center gap-2">
+                  <Building2 size={18} /> Organization
+                </h3>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400">To edit company/entity name, logo, industry and category, open <strong>Zeweco · Business Entities</strong> and click an entity to view and edit its details.</p>
+                <div>
+                  <label className="block text-xs font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-2 flex items-center gap-2"><Calendar size={14} /> Reporting</label>
+                  <div className="grid grid-cols-3 gap-2">
                     <div>
-                      <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider mb-1">Industry</label>
-                      <input
-                        type="text"
-                        value={entityIndustry}
-                        onChange={(e) => setEntityIndustry(e.target.value)}
-                        placeholder="e.g. Technology"
-                        className="w-full px-3 py-2 text-sm bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg focus:ring-2 focus:ring-blue-500/30"
-                      />
+                      <label className="block text-[10px] text-zinc-500 mb-1">Fiscal start</label>
+                      <select value={form.fiscalYearStartMonth} onChange={(e) => setForm({ ...form, fiscalYearStartMonth: Number(e.target.value) })} className="w-full px-2 py-2 text-xs bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg">
+                        {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+                      </select>
                     </div>
                     <div>
-                      <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider mb-1">Category</label>
-                      <input
-                        type="text"
-                        value={entityCategory}
-                        onChange={(e) => setEntityCategory(e.target.value)}
-                        placeholder="e.g. Portfolio"
-                        className="w-full px-3 py-2 text-sm bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg focus:ring-2 focus:ring-blue-500/30"
-                      />
+                      <label className="block text-[10px] text-zinc-500 mb-1">Timezone</label>
+                      <select value={form.defaultTimezone} onChange={(e) => setForm({ ...form, defaultTimezone: e.target.value })} className="w-full px-2 py-2 text-xs bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg">
+                        {TIMEZONES.map((tz) => <option key={tz} value={tz}>{tz}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-zinc-500 mb-1">Cycle</label>
+                      <select value={form.reportingCycle} onChange={(e) => setForm({ ...form, reportingCycle: e.target.value as ReportingCycle })} className="w-full px-2 py-2 text-xs bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg">
+                        <option value="weekly">Weekly</option>
+                        <option value="monthly">Monthly</option>
+                      </select>
                     </div>
                   </div>
+                </div>
+                <button type="button" onClick={() => saveSection('organization', 'Organization')} className="w-full py-3 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold">
+                  Save Organization
+                </button>
+              </div>
+            )}
+
+            {/* 2. Role & Access */}
+            {activeSection === 'role-access' && (
+              <div className="space-y-5">
+                <h3 className="text-sm font-bold text-zinc-800 dark:text-zinc-200 uppercase tracking-wider flex items-center gap-2">
+                  <Shield size={18} /> Role & Access Control
+                </h3>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400">Default permissions for new managers. Existing managers are edited in Team Management.</p>
+                {onOpenMemberManagement && (
                   <button
                     type="button"
-                    onClick={handleSaveEntity}
-                    className="w-full py-2.5 rounded-lg bg-green-600 hover:bg-green-500 text-white text-sm font-semibold transition-colors"
+                    onClick={onOpenMemberManagement}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-sm font-medium hover:bg-zinc-200 dark:hover:bg-zinc-700"
                   >
-                    Save this entity
+                    <Users size={16} /> Manage managers & assign entities
                   </button>
-                </>
-              )}
-            </div>
-          </section>
-
-          {/* Fiscal & time */}
-          <section>
-            <h3 className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-3 flex items-center gap-2">
-              <Calendar size={14} /> Fiscal year & time
-            </h3>
-            <div className="space-y-3">
-              <div>
-                <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider mb-1">Fiscal year start</label>
-                <select
-                  value={form.fiscalYearStartMonth}
-                  onChange={(e) => setForm({ ...form, fiscalYearStartMonth: Number(e.target.value) })}
-                  className="w-full px-3 py-2 text-sm bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg focus:ring-2 focus:ring-blue-500/30"
-                >
-                  {MONTHS.map((m, i) => (
-                    <option key={m} value={i + 1}>{m}</option>
+                )}
+                <div className="space-y-3">
+                  {MANAGER_PERMISSIONS.map(({ key, label, desc }) => (
+                    <label key={key} className="flex items-start gap-3 p-3 rounded-lg border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={form.defaultManagerPermissions.includes(key)}
+                        onChange={() => togglePermission(key)}
+                        className="mt-1 rounded border-zinc-300 dark:border-zinc-600"
+                      />
+                      <div>
+                        <span className="text-sm font-medium text-zinc-900 dark:text-white">{label}</span>
+                        <p className="text-xs text-zinc-500 dark:text-zinc-400">{desc}</p>
+                      </div>
+                    </label>
                   ))}
-                </select>
+                </div>
+                <button type="button" onClick={() => saveSection('role-access', 'Role & Access')} className="w-full py-3 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold">
+                  Save Role & Access
+                </button>
               </div>
-              <div>
-                <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider mb-1 flex items-center gap-1"><Globe size={12} /> Default timezone</label>
-                <select
-                  value={form.defaultTimezone}
-                  onChange={(e) => setForm({ ...form, defaultTimezone: e.target.value })}
-                  className="w-full px-3 py-2 text-sm bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg focus:ring-2 focus:ring-blue-500/30"
-                >
-                  {TIMEZONES.map((tz) => (
-                    <option key={tz} value={tz}>{tz}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider mb-1 flex items-center gap-1"><RotateCcw size={12} /> Reporting cycle</label>
-                <select
-                  value={form.reportingCycle}
-                  onChange={(e) => setForm({ ...form, reportingCycle: e.target.value as ReportingCycle })}
-                  className="w-full px-3 py-2 text-sm bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg focus:ring-2 focus:ring-blue-500/30"
-                >
-                  <option value="weekly">Weekly</option>
-                  <option value="monthly">Monthly</option>
-                </select>
-              </div>
-            </div>
-          </section>
+            )}
 
-          {/* Default entity stages */}
-          <section>
-            <h3 className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-3 flex items-center gap-2">
-              <Layers size={14} /> Default entity stages
-            </h3>
-            <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mb-2">Order of stages used for entities. Use ↑↓ to reorder.</p>
-            <div className="space-y-1">
-              {form.defaultStages.map((s, idx) => (
-                <div key={s} className="flex items-center gap-2 py-1.5 px-2 rounded-lg bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-100 dark:border-zinc-800">
-                  <div className="flex flex-col text-zinc-400">
-                    <button type="button" onClick={() => { const arr = [...form.defaultStages]; if (idx > 0) { [arr[idx - 1], arr[idx]] = [arr[idx], arr[idx - 1]]; setForm({ ...form, defaultStages: arr }); } }} className="p-0.5 hover:text-zinc-700 dark:hover:text-zinc-300 disabled:opacity-30" disabled={idx === 0}><ChevronUp size={14} /></button>
-                    <button type="button" onClick={() => { const arr = [...form.defaultStages]; if (idx < arr.length - 1) { [arr[idx], arr[idx + 1]] = [arr[idx + 1], arr[idx]]; setForm({ ...form, defaultStages: arr }); } }} className="p-0.5 hover:text-zinc-700 dark:hover:text-zinc-300 disabled:opacity-30" disabled={idx === form.defaultStages.length - 1}><ChevronDown size={14} /></button>
+            {/* 3. Entity Governance */}
+            {activeSection === 'entity-governance' && (
+              <div className="space-y-5">
+                <h3 className="text-sm font-bold text-zinc-800 dark:text-zinc-200 uppercase tracking-wider flex items-center gap-2">
+                  <LayoutGrid size={18} /> Entity Governance Rules
+                </h3>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-2">Escalation threshold (overdue count → At Risk)</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={20}
+                      value={form.escalationThresholdOverdue}
+                      onChange={(e) => setForm({ ...form, escalationThresholdOverdue: Math.max(1, Math.min(20, parseInt(e.target.value, 10) || 1)) })}
+                      className="w-full max-w-[100px] px-3 py-2 text-sm bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg"
+                    />
                   </div>
-                  <span className="px-2.5 py-1 rounded-lg bg-zinc-100 dark:bg-zinc-800 text-xs font-medium text-zinc-700 dark:text-zinc-300 flex-1">{s}</span>
+                  <div>
+                    <label className="block text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-2">Default milestone count template</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={24}
+                      value={form.defaultMilestoneCountTemplate}
+                      onChange={(e) => setForm({ ...form, defaultMilestoneCountTemplate: Math.max(1, Math.min(24, parseInt(e.target.value, 10) || 6)) })}
+                      className="w-full max-w-[100px] px-3 py-2 text-sm bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg"
+                    />
+                  </div>
+                  <label className="flex items-center gap-3 p-3 rounded-lg border border-zinc-200 dark:border-zinc-700 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={form.entityArchivingEnabled}
+                      onChange={(e) => setForm({ ...form, entityArchivingEnabled: e.target.checked })}
+                      className="rounded border-zinc-300 dark:border-zinc-600"
+                    />
+                    <span className="text-sm font-medium text-zinc-900 dark:text-white">Allow entity archive</span>
+                  </label>
+                  <div>
+                    <label className="block text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-2">Priority levels (system-wide)</label>
+                    <div className="flex flex-wrap gap-2">
+                      {(['High', 'Medium', 'Low'] as EntityPriorityLevel[]).map((level) => (
+                        <label key={level} className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={form.entityPriorityLevels.includes(level)}
+                            onChange={(e) => {
+                              if (e.target.checked) setForm({ ...form, entityPriorityLevels: [...form.entityPriorityLevels, level] });
+                              else setForm({ ...form, entityPriorityLevels: form.entityPriorityLevels.filter((l) => l !== level) });
+                            }}
+                            className="rounded border-zinc-300 dark:border-zinc-600"
+                          />
+                          <span className="text-sm text-zinc-700 dark:text-zinc-300">{level}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
                 </div>
-              ))}
-            </div>
-          </section>
-
-          {/* Health & escalation */}
-          <section>
-            <h3 className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-3 flex items-center gap-2">
-              <AlertTriangle size={14} /> Health & escalation
-            </h3>
-            <div className="space-y-3">
-              <div>
-                <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider mb-1">Escalation threshold (overdue items → At Risk)</label>
-                <input
-                  type="number"
-                  min={1}
-                  max={20}
-                  value={form.escalationThresholdOverdue}
-                  onChange={(e) => setForm({ ...form, escalationThresholdOverdue: Math.max(1, Math.min(20, Number(e.target.value) || 1)) })}
-                  className="w-full px-3 py-2 text-sm bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg focus:ring-2 focus:ring-blue-500/30"
-                />
-                <p className="text-[10px] text-zinc-500 mt-1">e.g. 3 = entity marked At Risk when 3+ items overdue</p>
+                <button type="button" onClick={() => saveSection('entity-governance', 'Entity Governance')} className="w-full py-3 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold">
+                  Save Entity Governance
+                </button>
               </div>
-              <p className="text-[11px] text-zinc-500 dark:text-zinc-400">Health rules: On Track / At Risk / Overdue / Stale applied per entity from status and thresholds.</p>
-            </div>
-          </section>
+            )}
 
-          {/* Entity options */}
-          <section>
-            <h3 className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-3 flex items-center gap-2">
-              <Archive size={14} /> Entity options
-            </h3>
-            <div className="space-y-3">
-              <label className="flex items-center gap-3 p-3 rounded-xl bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-100 dark:border-zinc-800 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={form.entityArchivingEnabled}
-                  onChange={(e) => setForm({ ...form, entityArchivingEnabled: e.target.checked })}
-                  className="w-4 h-4 rounded border-zinc-300 text-blue-600 focus:ring-blue-500"
-                />
-                <span className="text-sm text-zinc-800 dark:text-zinc-200">Enable entity archiving</span>
-              </label>
-              <div>
-                <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider mb-1 flex items-center gap-1"><Flag size={12} /> Entity priority levels</label>
-                <div className="flex flex-wrap gap-2">
-                  {form.entityPriorityLevels.map((p) => (
-                    <span key={p} className="px-2.5 py-1 rounded-lg bg-zinc-100 dark:bg-zinc-800 text-xs font-medium text-zinc-700 dark:text-zinc-300">
-                      {p}
-                    </span>
-                  ))}
+            {/* 4. KPI & Reporting */}
+            {activeSection === 'kpi-reporting' && (
+              <div className="space-y-5">
+                <h3 className="text-sm font-bold text-zinc-800 dark:text-zinc-200 uppercase tracking-wider flex items-center gap-2">
+                  <BarChart3 size={18} /> KPI & Reporting Settings
+                </h3>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-2">KPI update frequency</label>
+                    <select value={form.kpiUpdateFrequency} onChange={(e) => setForm({ ...form, kpiUpdateFrequency: e.target.value as KpiUpdateFrequency })} className="w-full px-3 py-2 text-sm bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg">
+                      <option value="daily">Daily</option>
+                      <option value="weekly">Weekly</option>
+                      <option value="monthly">Monthly</option>
+                    </select>
+                  </div>
+                  <label className="flex items-center gap-3 p-3 rounded-lg border border-zinc-200 dark:border-zinc-700 cursor-pointer">
+                    <input type="checkbox" checked={form.requireWeeklyManagerReport} onChange={(e) => setForm({ ...form, requireWeeklyManagerReport: e.target.checked })} className="rounded" />
+                    <span className="text-sm font-medium text-zinc-900 dark:text-white">Require weekly manager report</span>
+                  </label>
+                  <label className="flex items-center gap-3 p-3 rounded-lg border border-zinc-200 dark:border-zinc-700 cursor-pointer">
+                    <input type="checkbox" checked={form.lockKpiTargetEditing} onChange={(e) => setForm({ ...form, lockKpiTargetEditing: e.target.checked })} className="rounded" />
+                    <span className="text-sm font-medium text-zinc-900 dark:text-white">Lock KPI target editing</span>
+                  </label>
+                  <label className="flex items-center gap-3 p-3 rounded-lg border border-zinc-200 dark:border-zinc-700 cursor-pointer">
+                    <input type="checkbox" checked={form.enableKpiCommentary} onChange={(e) => setForm({ ...form, enableKpiCommentary: e.target.checked })} className="rounded" />
+                    <span className="text-sm font-medium text-zinc-900 dark:text-white">Enable KPI commentary</span>
+                  </label>
+                  <label className="flex items-center gap-3 p-3 rounded-lg border border-zinc-200 dark:border-zinc-700 cursor-pointer">
+                    <input type="checkbox" checked={form.autoReminderManagerUpdates} onChange={(e) => setForm({ ...form, autoReminderManagerUpdates: e.target.checked })} className="rounded" />
+                    <span className="text-sm font-medium text-zinc-900 dark:text-white">Auto reminder for manager updates</span>
+                  </label>
                 </div>
+                <button type="button" onClick={() => saveSection('kpi-reporting', 'KPI & Reporting')} className="w-full py-3 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold">
+                  Save KPI & Reporting
+                </button>
               </div>
-            </div>
-          </section>
+            )}
 
-          {/* Notifications */}
-          <section>
-            <h3 className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-3 flex items-center gap-2">
-              <Bell size={14} /> Notifications
-            </h3>
-            <div className="space-y-2">
-              <label className="flex items-center gap-3 p-3 rounded-xl bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-100 dark:border-zinc-800 cursor-pointer">
-                <input type="checkbox" checked={form.riskAlertNotifications} onChange={(e) => setForm({ ...form, riskAlertNotifications: e.target.checked })} className="w-4 h-4 rounded border-zinc-300 text-blue-600" />
-                <span className="text-sm text-zinc-800 dark:text-zinc-200">Risk alert notifications</span>
-              </label>
-              <label className="flex items-center gap-3 p-3 rounded-xl bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-100 dark:border-zinc-800 cursor-pointer">
-                <input type="checkbox" checked={form.overdueAlerts} onChange={(e) => setForm({ ...form, overdueAlerts: e.target.checked })} className="w-4 h-4 rounded border-zinc-300 text-blue-600" />
-                <span className="text-sm text-zinc-800 dark:text-zinc-200">Overdue alerts</span>
-              </label>
-              <label className="flex items-center gap-3 p-3 rounded-xl bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-100 dark:border-zinc-800 cursor-pointer">
-                <input type="checkbox" checked={form.deadlineAlerts} onChange={(e) => setForm({ ...form, deadlineAlerts: e.target.checked })} className="w-4 h-4 rounded border-zinc-300 text-blue-600" />
-                <span className="text-sm text-zinc-800 dark:text-zinc-200">Deadline alerts</span>
-              </label>
-              <div className="pt-2">
-                <label className="block text-[10px] font-medium text-zinc-500 uppercase tracking-wider mb-1">Notification method</label>
-                <select
-                  value={form.notificationMethod}
-                  onChange={(e) => setForm({ ...form, notificationMethod: e.target.value as NotificationMethod })}
-                  className="w-full px-3 py-2 text-sm bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg focus:ring-2 focus:ring-blue-500/30"
-                >
-                  <option value="email">Email</option>
-                  <option value="in-app">In-app</option>
-                  <option value="both">Both</option>
-                </select>
+            {/* 5. Financial Control */}
+            {activeSection === 'financial' && (
+              <div className="space-y-5">
+                <h3 className="text-sm font-bold text-zinc-800 dark:text-zinc-200 uppercase tracking-wider flex items-center gap-2">
+                  <Wallet size={18} /> Financial Control (MVP)
+                </h3>
+                <div className="space-y-4">
+                  <label className="flex items-center gap-3 p-3 rounded-lg border border-zinc-200 dark:border-zinc-700 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={form.financialModuleEnabled}
+                      onChange={(e) => {
+                        const next = e.target.checked;
+                        if (next) setForm({ ...form, financialModuleEnabled: next });
+                        else setConfirmModal({
+                          message: 'Disable financial module? Managers will lose financial visibility.',
+                          onConfirm: () => {
+                            const nextForm = { ...form, financialModuleEnabled: false };
+                            setForm(nextForm);
+                            onSave(nextForm);
+                            recordAudit('Financial Control', form, nextForm);
+                            setConfirmModal(null);
+                            setSaveSuccess('Financial Control saved.');
+                            setTimeout(() => setSaveSuccess(null), 3000);
+                          },
+                        });
+                      }}
+                      className="rounded"
+                    />
+                    <span className="text-sm font-medium text-zinc-900 dark:text-white">Enable financial module</span>
+                  </label>
+                  <label className="flex items-center gap-3 p-3 rounded-lg border border-zinc-200 dark:border-zinc-700 cursor-pointer">
+                    <input type="checkbox" checked={form.budgetApprovalRequired} onChange={(e) => setForm({ ...form, budgetApprovalRequired: e.target.checked })} className="rounded" />
+                    <span className="text-sm font-medium text-zinc-900 dark:text-white">Budget approval required</span>
+                  </label>
+                  <div>
+                    <label className="block text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-2">Budget alert threshold (%)</label>
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={form.budgetAlertThresholdPercent}
+                      onChange={(e) => setForm({ ...form, budgetAlertThresholdPercent: Math.max(0, Math.min(100, parseInt(e.target.value, 10) || 0)) })}
+                      className="w-full max-w-[100px] px-3 py-2 text-sm bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg"
+                    />
+                  </div>
+                  <label className="flex items-center gap-3 p-3 rounded-lg border border-zinc-200 dark:border-zinc-700 cursor-pointer">
+                    <input type="checkbox" checked={form.managerFinancialVisibility} onChange={(e) => setForm({ ...form, managerFinancialVisibility: e.target.checked })} className="rounded" />
+                    <span className="text-sm font-medium text-zinc-900 dark:text-white">Allow manager financial visibility</span>
+                  </label>
+                </div>
+                <button type="button" onClick={() => saveSection('financial', 'Financial Control')} className="w-full py-3 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold">
+                  Save Financial Control
+                </button>
               </div>
-            </div>
-          </section>
-        </div>
-        <div className="p-4 border-t border-zinc-200 dark:border-zinc-800 shrink-0">
-          <button
-            onClick={handleSave}
-            className="w-full py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold transition-colors"
-          >
-            Save settings
-          </button>
+            )}
+
+            {/* 6. Notifications & Alerts */}
+            {activeSection === 'notifications' && (
+              <div className="space-y-5">
+                <h3 className="text-sm font-bold text-zinc-800 dark:text-zinc-200 uppercase tracking-wider flex items-center gap-2">
+                  <Bell size={18} /> Notifications & Alerts
+                </h3>
+                <div className="space-y-4">
+                  <label className="flex items-center gap-3 p-3 rounded-lg border border-zinc-200 dark:border-zinc-700 cursor-pointer">
+                    <input type="checkbox" checked={form.riskAlertNotifications} onChange={(e) => setForm({ ...form, riskAlertNotifications: e.target.checked })} className="rounded" />
+                    <span className="text-sm font-medium text-zinc-900 dark:text-white">Risk alerts</span>
+                  </label>
+                  <label className="flex items-center gap-3 p-3 rounded-lg border border-zinc-200 dark:border-zinc-700 cursor-pointer">
+                    <input type="checkbox" checked={form.overdueAlerts} onChange={(e) => setForm({ ...form, overdueAlerts: e.target.checked })} className="rounded" />
+                    <span className="text-sm font-medium text-zinc-900 dark:text-white">Overdue alerts</span>
+                  </label>
+                  <label className="flex items-center gap-3 p-3 rounded-lg border border-zinc-200 dark:border-zinc-700 cursor-pointer">
+                    <input type="checkbox" checked={form.deadlineAlerts} onChange={(e) => setForm({ ...form, deadlineAlerts: e.target.checked })} className="rounded" />
+                    <span className="text-sm font-medium text-zinc-900 dark:text-white">Deadline alerts</span>
+                  </label>
+                  <label className="flex items-center gap-3 p-3 rounded-lg border border-zinc-200 dark:border-zinc-700 cursor-pointer">
+                    <input type="checkbox" checked={form.escalationAlerts} onChange={(e) => setForm({ ...form, escalationAlerts: e.target.checked })} className="rounded" />
+                    <span className="text-sm font-medium text-zinc-900 dark:text-white">Escalation alerts</span>
+                  </label>
+                  <label className="flex items-center gap-3 p-3 rounded-lg border border-zinc-200 dark:border-zinc-700 cursor-pointer">
+                    <input type="checkbox" checked={form.dailyExecutiveSummary} onChange={(e) => setForm({ ...form, dailyExecutiveSummary: e.target.checked })} className="rounded" />
+                    <span className="text-sm font-medium text-zinc-900 dark:text-white">Daily executive summary</span>
+                  </label>
+                  {form.dailyExecutiveSummary && (
+                    <div>
+                      <label className="block text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-2">Summary delivery time</label>
+                      <input
+                        type="text"
+                        value={form.summaryDeliveryTime}
+                        onChange={(e) => setForm({ ...form, summaryDeliveryTime: e.target.value })}
+                        placeholder="09:00"
+                        className="w-full max-w-[100px] px-3 py-2 text-sm bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg"
+                      />
+                    </div>
+                  )}
+                  <div>
+                    <label className="block text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-2">Delivery method</label>
+                    <select value={form.notificationMethod} onChange={(e) => setForm({ ...form, notificationMethod: e.target.value as 'email' | 'in-app' | 'both' })} className="w-full px-3 py-2 text-sm bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg">
+                      <option value="email">Email</option>
+                      <option value="in-app">In-App</option>
+                      <option value="both">Both</option>
+                    </select>
+                  </div>
+                </div>
+                <button type="button" onClick={() => saveSection('notifications', 'Notifications & Alerts')} className="w-full py-3 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold">
+                  Save Notifications
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
+
+      {/* Confirmation modal */}
+      {confirmModal && (
+        <>
+          <div className="fixed inset-0 bg-black/30 z-[60]" onClick={() => setConfirmModal(null)} />
+          <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl p-5 shadow-xl z-[61] max-w-sm">
+            <p className="text-sm text-zinc-700 dark:text-zinc-300 mb-4">{confirmModal.message}</p>
+            <div className="flex gap-2 justify-end">
+              <button type="button" onClick={() => setConfirmModal(null)} className="px-4 py-2 text-sm font-medium text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg">
+                Cancel
+              </button>
+              <button type="button" onClick={() => { confirmModal.onConfirm(); }} className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 rounded-lg">
+                Confirm
+              </button>
+            </div>
+          </div>
+        </>
+      )}
     </>
   );
 };

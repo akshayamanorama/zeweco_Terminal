@@ -10,6 +10,8 @@ interface BusinessEntitiesPanelProps {
   activeIds?: Set<string>;
   onToggleActive?: (id: string) => void;
   onAddBusiness?: (business: Business) => void;
+  /** When user clicks an entity, open its details (e.g. DetailDrawer) for editing */
+  onSelectEntity?: (business: Business) => void;
   /** When false, archive/hide toggle is hidden (CXO setting) */
   entityArchivingEnabled?: boolean;
   /** Stage order from company settings (for add-entity dropdown) */
@@ -45,6 +47,7 @@ export const BusinessEntitiesPanel: React.FC<BusinessEntitiesPanelProps> = ({
   activeIds: activeIdsProp,
   onToggleActive,
   onAddBusiness,
+  onSelectEntity,
   entityArchivingEnabled = true,
   defaultStages,
   companyName,
@@ -255,9 +258,11 @@ export const BusinessEntitiesPanel: React.FC<BusinessEntitiesPanelProps> = ({
               return (
                 <div
                   key={biz.id}
-                  className="flex items-center gap-3 p-4 bg-white dark:bg-zinc-900/40 border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-sm hover:border-zinc-300 dark:hover:border-zinc-700 transition-all"
+                  className={`flex items-center gap-3 p-4 bg-white dark:bg-zinc-900/40 border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-sm transition-all ${onSelectEntity ? 'hover:border-zinc-300 dark:hover:border-zinc-700 cursor-pointer' : ''}`}
+                  onClick={onSelectEntity ? () => { onSelectEntity(biz); onClose(); } : undefined}
+                  role={onSelectEntity ? 'button' : undefined}
                 >
-                  <div className="flex flex-col text-zinc-400 dark:text-zinc-500 shrink-0">
+                  <div className="flex flex-col text-zinc-400 dark:text-zinc-500 shrink-0" onClick={(e) => e.stopPropagation()}>
                     <button
                       type="button"
                       onClick={(e) => { e.stopPropagation(); move(index, -1); }}

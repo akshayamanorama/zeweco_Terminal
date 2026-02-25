@@ -26,7 +26,7 @@ import {
   HelpCircle,
 } from 'lucide-react';
 import { Business, FilterType, User, CompanySettings, CompanyProfile } from './types';
-import { BUSINESS_DATA, createDefaultCompanyProfile } from './constants';
+import { BUSINESS_DATA, createDefaultCompanyProfile, DEFAULT_COMPANY_SETTINGS } from './constants';
 import { api } from './src/api/client';
 import { StageBadge, StatusPill } from './components/Badge';
 import { RouteLine } from './components/RouteLine';
@@ -82,7 +82,9 @@ const App: React.FC = () => {
       const s = localStorage.getItem('terminal_company_profiles');
       if (s) {
         const parsed = JSON.parse(s) as CompanyProfile[];
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.map((p) => ({ ...DEFAULT_COMPANY_SETTINGS, ...p, id: p.id } as CompanyProfile));
+        }
       }
     } catch (_) {}
     return [createDefaultCompanyProfile('default', 'Zeweco')];
@@ -96,10 +98,12 @@ const App: React.FC = () => {
   });
   const companySettings: CompanySettings = useMemo(() => {
     const found = companyProfiles.find(c => c.id === activeCompanyId);
-    return found ? { ...found } : companyProfiles[0] ? { ...companyProfiles[0] } : createDefaultCompanyProfile('default');
+    const base = found ?? companyProfiles[0];
+    const merged = base ? { ...DEFAULT_COMPANY_SETTINGS, ...base } : createDefaultCompanyProfile('default');
+    return merged as CompanySettings;
   }, [companyProfiles, activeCompanyId]);
-  /** Terminal header name/logo: use first business entity when available (edited in Company Settings) */
-  const terminalDisplayName = businesses[0]?.name || companySettings.companyName || 'Zeweco';
+  /** Terminal name is always from company settings (Zeweco). Logo can be first entity or company. */
+  const terminalDisplayName = companySettings.companyName || 'Zeweco';
   const terminalDisplayLogo = businesses[0]?.logoUrl?.trim() || companySettings.logoUrl?.trim() || '';
   const [hiddenEntityIds, setHiddenEntityIds] = useState<Set<string>>(new Set());
   const [selectedBusiness, setSelectedBusiness] = useState<Business | null>(null);
@@ -677,6 +681,7 @@ const App: React.FC = () => {
         activeIds={businessEntityActiveIds}
         onToggleActive={handleEntityToggleActive}
         onAddBusiness={handleAddBusiness}
+        onSelectEntity={(business) => { setSelectedBusiness(business); setIsBusinessEntitiesOpen(false); }}
         entityArchivingEnabled={companySettings.entityArchivingEnabled}
         defaultStages={companySettings.defaultStages}
         companyName={terminalDisplayName}
@@ -696,6 +701,8 @@ const App: React.FC = () => {
         onSave={handleSaveCompanySettings}
         businesses={businesses}
         onUpdateBusiness={updateBusiness}
+        onOpenMemberManagement={() => { setIsCompanySettingsOpen(false); setIsMembersOpen(true); }}
+        currentUserName={currentUser?.name ?? 'CXO'}
       />
 
       <ManagerProfile
