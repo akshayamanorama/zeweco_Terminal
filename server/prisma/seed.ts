@@ -50,9 +50,9 @@ async function main() {
     // Create Users
     await prisma.user.createMany({
         data: [
-            { name: 'Kirtii Sharma', email: 'kirtii@zeweco.ai', role: 'Manager', password: 'password', avatar: 'https://i.pravatar.cc/150?u=kirtii' },
-            { name: 'Juhi', email: 'juhi@zeweco.ai', role: 'Manager', password: 'password', avatar: 'https://i.pravatar.cc/150?u=juhi' },
-            { name: 'Akshaya', email: 'akshaya@zeweco.ai', role: 'CXO', password: '123456', avatar: 'https://i.pravatar.cc/150?u=akshaya' },
+            { name: 'Kirtii Sharma', email: 'kirtii@zeweco.com', role: 'Manager', password: 'password', avatar: 'https://i.pravatar.cc/150?u=kirtii' },
+            { name: 'Juhi', email: 'juhi@zeweco.com', role: 'Manager', password: 'password', avatar: 'https://i.pravatar.cc/150?u=juhi' },
+            { name: 'Akshaya', email: 'akshaya@zeweco.com', role: 'CXO', password: '123456', avatar: 'https://i.pravatar.cc/150?u=akshaya' },
         ],
     });
 

@@ -36,6 +36,44 @@ export interface User {
   permissions?: string[];
 }
 
+/** Chat thread (direct, entity, or group) */
+export interface ChatThread {
+  id: string;
+  type: 'DIRECT' | 'ENTITY' | 'GROUP';
+  entityId: string | null;
+  name?: string | null;
+  avatar?: string | null;
+  createdAt: string;
+  members?: { userId: string; lastReadAt?: string | null }[];
+  /** Last message in thread (for list preview) */
+  lastMessage?: { body: string; createdAt: string; senderUserId: string | null };
+}
+
+/** Chat message */
+export interface ChatMessage {
+  id: string;
+  threadId: string;
+  senderUserId: string | null;
+  body: string;
+  messageType: 'USER' | 'SYSTEM';
+  createdAt: string;
+  replyToMessageId?: string | null;
+  replyToBody?: string | null;
+}
+
+/** Meeting (Instant Meet) */
+export interface Meeting {
+  id: string;
+  entityId: string;
+  threadId: string;
+  createdByUserId: string;
+  meetLink: string | null;
+  startTime: string;
+  endTime: string | null;
+  durationMinutes: number | null;
+  createdAt: string;
+}
+
 export interface Business {
   id: string;
   name: string;

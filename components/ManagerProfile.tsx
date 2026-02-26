@@ -28,7 +28,7 @@ export const ManagerProfile: React.FC<ManagerProfileProps> = ({ isOpen, onClose,
       <div className="fixed top-0 right-0 h-full w-full max-w-md bg-white dark:bg-zinc-950 border-l border-zinc-200 dark:border-zinc-800 shadow-2xl z-50 flex flex-col">
         <div className="flex items-center justify-between p-4 border-b border-zinc-200 dark:border-zinc-800">
           <h2 className="text-sm font-bold uppercase tracking-wider text-zinc-800 dark:text-zinc-200">
-            Profile &amp; Settings
+            {user?.role === 'Manager' ? 'Profile' : 'Profile & Settings'}
           </h2>
           <button
             onClick={onClose}

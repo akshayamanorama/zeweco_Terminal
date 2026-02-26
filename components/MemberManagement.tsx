@@ -56,6 +56,8 @@ export const MemberManagement: React.FC<MemberManagementProps> = ({
   const [resetPassword, setResetPassword] = useState('');
   const [assignedIds, setAssignedIds] = useState<Set<string>>(new Set());
   const [credentialMessage, setCredentialMessage] = useState<string | null>(null);
+  const [addError, setAddError] = useState<string | null>(null);
+  const [isAddingUser, setIsAddingUser] = useState(false);
 
   // Form state
   const [newName, setNewName] = useState('');
@@ -156,28 +158,48 @@ export const MemberManagement: React.FC<MemberManagementProps> = ({
   };
 
 
-  const handleAdd = (e: React.FormEvent) => {
+  const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newName || !newEmail) return;
+    if (!newName || !newEmail || !newPassword) return;
 
-    const newManager: User = {
-      id: `mgr-${Date.now()}`,
-      name: newName,
-      role: 'Manager',
-      email: newEmail.trim(),
-      avatar: `https://i.pravatar.cc/150?u=${encodeURIComponent(newEmail)}`,
-      lastLogin: 'Never',
-      permissions: []
-    };
+    const email = newEmail.trim();
+    const name = newName.trim();
+    setAddError(null);
+    setIsAddingUser(true);
 
-    onAddManager(newManager);
-    if (newPassword) {
-      saveCredentialsLocally(newManager.email, newPassword, newManager);
+    try {
+      const created = await import('../src/api/client').then(m =>
+        m.api.createUser({
+          name,
+          email,
+          password: newPassword,
+          avatar: `https://i.pravatar.cc/150?u=${encodeURIComponent(email)}`,
+        })
+      );
+      onAddManager(created);
+      if (created.permissions === undefined) (created as User).permissions = [];
+      setNewName('');
+      setNewEmail('');
+      setNewPassword('');
+      setIsAdding(false);
+    } catch (err) {
+      console.error('Create manager failed', err);
+      setAddError('Could not save to server. Is the backend running? Add manager again after starting the server.');
+      // Fallback: add locally so CXO sees the manager; they can set password again when backend is up
+      const localManager: User = {
+        id: `mgr-${Date.now()}`,
+        name,
+        role: 'Manager',
+        email,
+        avatar: `https://i.pravatar.cc/150?u=${encodeURIComponent(email)}`,
+        lastLogin: 'Never',
+        permissions: [],
+      };
+      onAddManager(localManager);
+      if (newPassword) saveCredentialsLocally(email, newPassword, localManager);
+    } finally {
+      setIsAddingUser(false);
     }
-    setNewName('');
-    setNewEmail('');
-    setNewPassword('');
-    setIsAdding(false);
   };
 
   const assignedBusinesses = selectedManager
@@ -473,6 +495,9 @@ export const MemberManagement: React.FC<MemberManagementProps> = ({
                 </div>
               </div>
 
+              {addError && (
+                <p className="text-xs text-amber-600 dark:text-amber-400 font-medium">{addError}</p>
+              )}
               <div className="bg-blue-50 dark:bg-blue-900/10 p-4 rounded-xl border border-blue-100 dark:border-blue-900/20 flex gap-3">
                 <AlertCircle className="text-blue-500 shrink-0" size={18} />
                 <p className="text-[10px] text-blue-600 dark:text-blue-400 leading-relaxed uppercase font-medium">Provisioning an account will generate a secure terminal uplink. The manager will be notified via Zeweco Intranet.</p>
@@ -481,16 +506,18 @@ export const MemberManagement: React.FC<MemberManagementProps> = ({
               <div className="flex gap-3 pt-2">
                 <button
                   type="button"
-                  onClick={() => setIsAdding(false)}
+                  onClick={() => { setIsAdding(false); setAddError(null); }}
                   className="flex-1 bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 py-3 rounded-xl text-xs font-bold transition-all"
+                  disabled={isAddingUser}
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 bg-zinc-900 dark:bg-white text-white dark:text-black py-3 rounded-xl text-xs font-bold transition-all shadow-lg flex items-center justify-center gap-2"
+                  disabled={isAddingUser}
+                  className="flex-1 bg-zinc-900 dark:bg-white text-white dark:text-black py-3 rounded-xl text-xs font-bold transition-all shadow-lg flex items-center justify-center gap-2 disabled:opacity-50"
                 >
-                  <Check size={16} /> Create User
+                  {isAddingUser ? 'Creating...' : <><Check size={16} /> Create User</>}
                 </button>
               </div>
             </form>

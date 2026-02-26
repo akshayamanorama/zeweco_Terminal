@@ -10,6 +10,7 @@ import {
   GripVertical,
   FileText,
   ArrowUpCircle,
+  Shield,
 } from 'lucide-react';
 import {
   DndContext,
@@ -389,6 +390,14 @@ export const ManagerWorkspace: React.FC<ManagerWorkspaceProps> = ({
     moveTask(selectedBiz.id, task, sourceChecklistId, targetChecklistId, targetIndex);
   };
 
+  const permissionLabels: Record<string, string> = {
+    can_manage_team: 'Manage Team',
+    can_delete_tasks: 'Delete Tasks',
+    can_edit_business: 'Edit Business Profile',
+    can_view_financials: 'View Financials',
+  };
+  const perms = (currentUser?.permissions as string[] | undefined) || [];
+
   return (
     <div className="flex h-full bg-zinc-50 dark:bg-black overflow-hidden">
       {/* Sidebar Entities */}
@@ -429,6 +438,22 @@ export const ManagerWorkspace: React.FC<ManagerWorkspaceProps> = ({
             </div>
           )}
         </div>
+        {/* Your access: show permissions granted by CXO */}
+        {perms.length > 0 && (
+          <div className="p-3 border-t border-zinc-200 dark:border-zinc-800">
+            <div className="flex items-center gap-2 mb-2">
+              <Shield size={12} className="text-zinc-500" />
+              <h3 className="text-[10px] font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-[0.15em]">Your access</h3>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {perms.map((id) => (
+                <span key={id} className="text-[9px] font-medium px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 border border-blue-100 dark:border-blue-800">
+                  {permissionLabels[id] || id}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
       </aside>
 
       {/* Main Workspace Area */}

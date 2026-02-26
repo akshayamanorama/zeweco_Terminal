@@ -19,9 +19,11 @@ interface DetailDrawerProps {
   companyName?: string;
   /** Company logo from Company Settings */
   companyLogoUrl?: string;
+  /** Open entity chat panel with this entity */
+  onOpenEntityChat?: (entityId: string) => void;
 }
 
-export const DetailDrawer: React.FC<DetailDrawerProps> = ({ business, onClose, onUpdateBusiness, managers = [], role = 'Manager', companyName, companyLogoUrl }) => {
+export const DetailDrawer: React.FC<DetailDrawerProps> = ({ business, onClose, onUpdateBusiness, managers = [], role = 'Manager', companyName, companyLogoUrl, onOpenEntityChat }) => {
   const isCXO = role === 'CXO';
   const [newRiskDesc, setNewRiskDesc] = useState('');
   const [newRiskSeverity, setNewRiskSeverity] = useState<RiskSeverity>('Medium');
@@ -250,9 +252,21 @@ export const DetailDrawer: React.FC<DetailDrawerProps> = ({ business, onClose, o
               </p>
             )}
           </div>
-          <button onClick={onClose} className="text-zinc-400 hover:text-zinc-900 dark:text-zinc-500 dark:hover:text-white transition-colors p-1 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-lg">
-            <X size={20} />
-          </button>
+          <div className="flex items-center gap-1">
+            {onOpenEntityChat && business && (
+              <button
+                type="button"
+                onClick={() => onOpenEntityChat(business.id)}
+                className="p-2 rounded-lg text-zinc-500 hover:text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors"
+                title="Open entity chat"
+              >
+                <MessageSquare size={18} />
+              </button>
+            )}
+            <button onClick={onClose} className="text-zinc-400 hover:text-zinc-900 dark:text-zinc-500 dark:hover:text-white transition-colors p-1 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-lg">
+              <X size={20} />
+            </button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 space-y-6">

@@ -3,12 +3,20 @@ import { Business, User } from '../../types';
 
 const API_BASE = '/api';
 
-async function fetchAPI<T>(endpoint: string, options?: RequestInit): Promise<T> {
+let authUserId: string | null = null;
+export function setAuthUser(id: string | null) {
+    authUserId = id;
+}
+
+async function fetchAPI<T>(endpoint: string, options?: RequestInit, requireAuth = false): Promise<T> {
+    const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        ...(options?.headers as Record<string, string>),
+    };
+    if (requireAuth && authUserId) headers['X-User-Id'] = authUserId;
     const response = await fetch(`${API_BASE}${endpoint}`, {
-        headers: {
-            'Content-Type': 'application/json',
-        },
         ...options,
+        headers,
     });
 
     if (!response.ok) {
@@ -19,6 +27,7 @@ async function fetchAPI<T>(endpoint: string, options?: RequestInit): Promise<T> 
 }
 
 export const api = {
+    setAuthUser,
     // Businesses
     getBusinesses: () => fetchAPI<Business[]>('/businesses'),
     updateBusiness: (id: string, data: Partial<Business>) =>
@@ -46,6 +55,7 @@ export const api = {
 
     // Users
     getUsers: () => fetchAPI<User[]>('/users'),
+    getCxo: () => fetchAPI<User>('/users/cxo'),
     createUser: (user: Partial<User>) =>
         fetchAPI<User>('/users', { method: 'POST', body: JSON.stringify(user) }),
     deleteUser: (id: string) =>
@@ -56,5 +66,33 @@ export const api = {
         fetchAPI<User>(`/users/${id}/credentials`, { method: 'PUT', body: JSON.stringify(data) }),
     /** Reset password by email so login works (CXO sets manager password) */
     resetCredentialsByEmail: (email: string, data: { newEmail?: string; newPassword?: string }) =>
-        fetchAPI<User>('/users/reset-credentials', { method: 'POST', body: JSON.stringify({ email, ...data }) }),
+        fetchAPI<User>('/users/reset-credentials', { method: 'POST', body: JSON.stringify({ email, ...data }) }, true),
+
+    // Chat (requires X-User-Id)
+    getChatThreads: () => fetchAPI<import('../../types').ChatThread[]>('/chat/threads', {}, true),
+    createChatThread: (data: { type: 'DIRECT' | 'ENTITY' | 'GROUP'; entityId?: string; otherUserId?: string; memberIds?: string[]; name?: string; avatar?: string }) =>
+        fetchAPI<import('../../types').ChatThread>('/chat/threads', { method: 'POST', body: JSON.stringify(data) }, true),
+    getChatMessages: (threadId: string) => fetchAPI<import('../../types').ChatMessage[]>(`/chat/threads/${threadId}/messages`, {}, true),
+    sendChatMessage: (threadId: string, body: string, messageType: 'USER' | 'SYSTEM' = 'USER', opts?: { replyToMessageId?: string; replyToBody?: string }) =>
+        fetchAPI<import('../../types').ChatMessage>(`/chat/threads/${threadId}/messages`, { method: 'POST', body: JSON.stringify({ body, messageType, replyToMessageId: opts?.replyToMessageId, replyToBody: opts?.replyToBody }) }, true),
+    markThreadRead: (threadId: string) =>
+        fetchAPI<import('../../types').ChatThread>(`/chat/threads/${threadId}/read`, { method: 'PATCH', body: JSON.stringify({}) }, true),
+    addGroupMembers: (threadId: string, userIds: string[]) =>
+        fetchAPI<import('../../types').ChatThread>(`/chat/threads/${threadId}/members`, { method: 'POST', body: JSON.stringify({ userIds }) }, true),
+    updateGroup: (threadId: string, data: { name?: string; avatar?: string }) =>
+        fetchAPI<import('../../types').ChatThread>(`/chat/threads/${threadId}`, { method: 'PATCH', body: JSON.stringify(data) }, true),
+    removeGroupMember: (threadId: string, userId: string) =>
+        fetchAPI<import('../../types').ChatThread>(`/chat/threads/${threadId}/members/${userId}`, { method: 'DELETE' }, true),
+    leaveChatThread: (threadId: string) =>
+        fetchAPI<{ left: boolean }>(`/chat/threads/${threadId}/leave`, { method: 'POST' }, true),
+    deleteGroup: (threadId: string) =>
+        fetchAPI<{ deleted: boolean }>(`/chat/threads/${threadId}`, { method: 'DELETE' }, true),
+
+    // Meetings (Instant Meet)
+    startMeeting: (entityId: string, meetLink?: string) =>
+        fetchAPI<import('../../types').Meeting>(`/entities/${entityId}/meetings/start`, { method: 'POST', body: JSON.stringify({ meetLink: meetLink || undefined }) }, true),
+    endMeeting: (entityId: string, meetingId: string) =>
+        fetchAPI<{ endTime: string; durationMinutes: number }>(`/entities/${entityId}/meetings/${meetingId}/end`, { method: 'POST' }, true),
+    getMeetingHistory: (entityId: string) =>
+        fetchAPI<import('../../types').Meeting[]>(`/entities/${entityId}/meetings/history`, {}, true),
 };

@@ -5,3 +5,5 @@ dist
 *.exp
 .server
 .server_key
+*.db
+server/prisma/*.db

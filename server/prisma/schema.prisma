@@ -9,14 +9,15 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(uuid())
-  name      String
-  role      String   // 'CXO' | 'Manager'
-  email     String   @unique
-  avatar    String?
-  password  String   // In a real app this would be hashed
+  id          String   @id @default(uuid())
+  name        String
+  role        String   // 'CXO' | 'Manager'
+  email       String   @unique
+  avatar      String?
+  password    String
   lastLogin   DateTime @default(now())
-  permissions String   @default("[]") // JSON array of permission strings
+  permissions String   @default("[]")
+  disabled    Boolean  @default(false) // CXO can disable manager
 }
 
 model Business {
@@ -48,4 +49,62 @@ model Task {
   completed   Boolean   @default(false)
   checklistId String
   checklist   Checklist @relation(fields: [checklistId], references: [id], onDelete: Cascade)
+}
+
+// --- Chat + Meet (MVP) ---
+model ChatThread {
+  id        String   @id @default(uuid())
+  type      String   // 'DIRECT' | 'ENTITY' | 'GROUP'
+  entityId  String?  // null for DIRECT/GROUP
+  name      String?  // group name (GROUP only)
+  avatar    String?  // group photo URL or data URL (GROUP only)
+  createdAt DateTime @default(now())
+  members   ChatThreadMember[]
+  messages  ChatMessage[]
+  meetings  Meeting[]
+}
+
+model ChatThreadMember {
+  id                String      @id @default(uuid())
+  threadId          String
+  userId            String
+  lastReadAt        DateTime?   // for read receipts
+  thread            ChatThread  @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  @@unique([threadId, userId])
+}
+
+model ChatMessage {
+  id                String    @id @default(uuid())
+  threadId          String
+  senderUserId      String?   // null for SYSTEM
+  body              String
+  messageType       String    // 'USER' | 'SYSTEM'
+  replyToMessageId  String?   // reply-to reference
+  replyToBody       String?   // snippet of replied message
+  createdAt         DateTime  @default(now())
+  thread            ChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+}
+
+model Meeting {
+  id              String    @id @default(uuid())
+  entityId        String
+  threadId        String
+  createdByUserId String
+  meetLink        String?
+  startTime       DateTime
+  endTime        DateTime?
+  durationMinutes Int?
+  createdAt       DateTime  @default(now())
+  thread          ChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+}
+
+model AuditLog {
+  id           String   @id @default(uuid())
+  actorUserId  String
+  actionType   String
+  targetType   String
+  targetId     String?
+  beforeJson   String?
+  afterJson    String?
+  createdAt    DateTime @default(now())
 }

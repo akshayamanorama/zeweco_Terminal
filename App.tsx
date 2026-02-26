@@ -26,6 +26,7 @@ import {
   HelpCircle,
   Pencil,
   Image,
+  MessageSquare,
 } from 'lucide-react';
 import { Business, FilterType, User, CompanySettings, CompanyProfile } from './types';
 import { BUSINESS_DATA, createDefaultCompanyProfile, DEFAULT_COMPANY_SETTINGS } from './constants';
@@ -38,6 +39,39 @@ import { ManagerWorkspace } from './components/ManagerWorkspace';
 import { MemberManagement } from './components/MemberManagement';
 import { BusinessEntitiesPanel } from './components/BusinessEntitiesPanel';
 import { ManagerProfile } from './components/ManagerProfile';
+import { ChatPanel } from './components/ChatPanel';
+
+class ChatPanelErrorBoundary extends React.Component<
+  { children: React.ReactNode; onClose: () => void },
+  { hasError: boolean; errorMessage: string }
+> {
+  state = { hasError: false, errorMessage: '' };
+  static getDerivedStateFromError(err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { hasError: true, errorMessage: msg };
+  }
+  componentDidCatch(err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    this.setState((s) => (s.errorMessage ? s : { ...s, errorMessage: msg }));
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <>
+          <div className="fixed inset-0 bg-black/25 z-[60]" onClick={this.props.onClose} aria-hidden />
+          <div className="fixed top-0 right-0 h-full w-full sm:max-w-[420px] bg-white dark:bg-zinc-950 border-l border-zinc-200 dark:border-zinc-800 shadow-2xl z-[70] flex flex-col items-center justify-center p-6">
+            <p className="text-sm text-zinc-600 dark:text-zinc-400 text-center">Chat couldn’t load. Start the backend: in your project folder run <code className="bg-zinc-200 dark:bg-zinc-700 px-1 rounded">cd server && npm run dev</code>. Use a real account (not demo).</p>
+            {this.state.errorMessage && (
+              <p className="mt-2 text-xs text-amber-600 dark:text-amber-400 font-mono max-w-full truncate" title={this.state.errorMessage}>{this.state.errorMessage}</p>
+            )}
+            <button onClick={() => { this.setState({ hasError: false, errorMessage: '' }); this.props.onClose(); }} className="mt-4 px-4 py-2 rounded-lg bg-zinc-200 dark:bg-zinc-800 text-sm font-medium">Close</button>
+          </div>
+        </>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 const DEFAULT_MANAGERS: User[] = [
   {
@@ -94,6 +128,9 @@ const App: React.FC = () => {
   const [isSearchExpanded, setIsSearchExpanded] = useState(false);
   const [isMembersOpen, setIsMembersOpen] = useState(false);
   const [isBusinessEntitiesOpen, setIsBusinessEntitiesOpen] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [chatOpenEntityId, setChatOpenEntityId] = useState<string | null>(null);
+  const [unreadChatCount, setUnreadChatCount] = useState(0);
   const [isManagerProfileOpen, setIsManagerProfileOpen] = useState(false);
   const [isTerminalEditOpen, setIsTerminalEditOpen] = useState(false);
   const [terminalEditName, setTerminalEditName] = useState('');
@@ -177,9 +214,32 @@ const App: React.FC = () => {
     }
   };
 
+  // Fetch managers from backend so list and permissions stay in sync
+  const refreshManagers = async () => {
+    try {
+      const data = await api.getUsers();
+      if (Array.isArray(data)) {
+        setManagers(data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch managers:', error);
+    }
+  };
+
   useEffect(() => {
     refreshBusinesses();
+    refreshManagers();
   }, []);
+
+  // When CXO opens Team Management, refresh managers so permissions are up to date
+  useEffect(() => {
+    if (isMembersOpen) refreshManagers();
+  }, [isMembersOpen]);
+
+  // When Chat opens, refresh managers so CXO "Start with manager" uses real DB IDs (manager then sees thread & messages)
+  useEffect(() => {
+    if (isChatOpen && currentUser?.role === 'CXO') refreshManagers();
+  }, [isChatOpen]);
 
   // Sync theme with document and localStorage
   useEffect(() => {
@@ -211,6 +271,7 @@ const App: React.FC = () => {
         const user = JSON.parse(savedSession);
         setCurrentUser(user);
         setIsAuthenticated(true);
+        api.setAuthUser(user?.id ?? null);
       } catch (e) {
         localStorage.removeItem('terminal_session');
       }
@@ -224,6 +285,27 @@ const App: React.FC = () => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
+
+  // Clear chat badge when panel is opened
+  useEffect(() => {
+    if (isChatOpen) setUnreadChatCount(0);
+  }, [isChatOpen]);
+
+  // Poll for chat threads when panel is closed so we can show notification badge (e.g. manager has message from CXO)
+  const isDemoUser = currentUser?.id && /^(cxo-|mgr-)\d+$/.test(currentUser.id);
+  useEffect(() => {
+    if (isChatOpen || !currentUser || isDemoUser) return;
+    api.setAuthUser(currentUser.id);
+    const poll = () => {
+      api.getChatThreads().then((list) => {
+        const n = Array.isArray(list) ? list.length : 0;
+        setUnreadChatCount((prev) => (n > 0 ? Math.min(n, 99) : prev));
+      }).catch(() => {});
+    };
+    poll();
+    const interval = setInterval(poll, 20000);
+    return () => clearInterval(interval);
+  }, [isChatOpen, currentUser?.id, isDemoUser]);
 
   const handleLogin = async (userOrEmail: User | string) => {
     if (typeof userOrEmail === 'string') {
@@ -243,6 +325,7 @@ const App: React.FC = () => {
     } else {
       setCurrentUser(userOrEmail);
       setIsAuthenticated(true);
+      api.setAuthUser(userOrEmail.id);
       localStorage.setItem('terminal_session', JSON.stringify(userOrEmail));
     }
   };
@@ -250,6 +333,7 @@ const App: React.FC = () => {
   const handleLogout = () => {
     setIsAuthenticated(false);
     setCurrentUser(null);
+    api.setAuthUser(null);
     localStorage.removeItem('terminal_session');
   };
 
@@ -272,7 +356,12 @@ const App: React.FC = () => {
     setManagers(prev => prev.map(m => m.id === id ? { ...m, ...updates } : m));
   };
 
-  const deleteManager = (id: string) => {
+  const deleteManager = async (id: string) => {
+    try {
+      await api.deleteUser(id);
+    } catch (_) {
+      // Backend may be down; still remove from local state
+    }
     setManagers(prev => prev.filter(m => m.id !== id));
   };
 
@@ -467,15 +556,32 @@ const App: React.FC = () => {
                   >
                     <Users size={14} />
                   </button>
+                  <button
+                    onClick={() => setIsChatOpen(true)}
+                    className={`relative p-2 rounded-lg bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400 hover:text-blue-500 transition-all ${isChatOpen ? 'bg-blue-50 border-blue-200 text-blue-500 dark:bg-blue-900/20 dark:border-blue-800' : ''}`}
+                    title="Chat"
+                  >
+                    <MessageSquare size={14} />
+                    {unreadChatCount > 0 && (
+                      <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-3.5 px-1 flex items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
+                        {unreadChatCount > 99 ? '99+' : unreadChatCount}
+                      </span>
+                    )}
+                  </button>
                 </>
               )}
               {currentUser?.role === 'Manager' && (
                 <button
-                  onClick={() => setIsManagerProfileOpen(true)}
-                  className={`p-2 rounded-lg bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400 hover:text-blue-500 transition-all ${isManagerProfileOpen ? 'bg-blue-50 border-blue-200 text-blue-500 dark:bg-blue-900/20 dark:border-blue-800' : ''}`}
-                  title="Profile & Settings"
+                  onClick={() => setIsChatOpen(true)}
+                  className={`relative p-2 rounded-lg bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400 hover:text-blue-500 transition-all ${isChatOpen ? 'bg-blue-50 border-blue-200 text-blue-500 dark:bg-blue-900/20 dark:border-blue-800' : ''}`}
+                  title="Chat"
                 >
-                  <Settings size={14} />
+                  <MessageSquare size={14} />
+                  {unreadChatCount > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-3.5 px-1 flex items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
+                      {unreadChatCount > 99 ? '99+' : unreadChatCount}
+                    </span>
+                  )}
                 </button>
               )}
 
@@ -524,7 +630,7 @@ const App: React.FC = () => {
                 </div>
                 <div className="absolute right-0 top-full mt-2 w-48 bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-2xl py-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all transform origin-top-right group-hover:translate-y-0 translate-y-2 z-50">
                   {currentUser?.role === 'Manager' && (
-                    <button onClick={() => setIsManagerProfileOpen(true)} className="w-full flex items-center gap-3 px-4 py-2 text-xs text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors text-left"><UserIcon size={14} />Profile &amp; Settings</button>
+                    <button onClick={() => setIsManagerProfileOpen(true)} className="w-full flex items-center gap-3 px-4 py-2 text-xs text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors text-left"><UserIcon size={14} />Profile</button>
                   )}
                   <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-2 text-xs text-red-500 hover:bg-red-500/5 transition-colors text-left"><LogOut size={14} />Logout</button>
                 </div>
@@ -665,6 +771,14 @@ const App: React.FC = () => {
                                   {biz.logoUrl?.trim() ? <img src={biz.logoUrl} alt="" className="w-full h-full object-cover" /> : biz.code.substring(0, 2)}
                                 </div>
                                 <span className="dashboard-entity-name truncate">{biz.name}</span>
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); setChatOpenEntityId(biz.id); setIsChatOpen(true); }}
+                                  className="p-1.5 rounded-lg text-zinc-400 hover:text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 opacity-0 group-hover:opacity-100 transition-all shrink-0"
+                                  title="Open entity chat"
+                                >
+                                  <MessageSquare size={14} />
+                                </button>
                               </div>
                             </td>
                             <td className="px-4 py-2.5"><StatusPill status={biz.status} /></td>
@@ -732,6 +846,7 @@ const App: React.FC = () => {
         role={currentUser?.role}
         companyName={terminalDisplayName}
         companyLogoUrl={terminalDisplayLogo || undefined}
+        onOpenEntityChat={selectedBusiness ? (entityId) => { setChatOpenEntityId(entityId); setIsChatOpen(true); } : undefined}
       />
 
       <MemberManagement
@@ -744,6 +859,17 @@ const App: React.FC = () => {
         onDeleteManager={deleteManager}
         onUpdateBusiness={updateBusiness}
       />
+
+      <ChatPanelErrorBoundary onClose={() => { setIsChatOpen(false); setChatOpenEntityId(null); }}>
+        <ChatPanel
+          isOpen={isChatOpen}
+          onClose={() => { setIsChatOpen(false); setChatOpenEntityId(null); }}
+          currentUser={currentUser}
+          managers={managers}
+          businesses={businesses}
+          initialEntityId={chatOpenEntityId}
+        />
+      </ChatPanelErrorBoundary>
 
       <BusinessEntitiesPanel
         isOpen={isBusinessEntitiesOpen}

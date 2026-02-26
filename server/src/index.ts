@@ -1,5 +1,5 @@
 
-import express, { Request, Response } from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { PrismaClient } from '@prisma/client';
@@ -11,7 +11,46 @@ const prisma = new PrismaClient();
 const port = process.env.PORT || 3001;
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' })); // allow chat messages with embedded images/files (base64)
+
+// --- Auth for Chat/Meet/CXO (header X-User-Id) ---
+type AuthUser = { id: string; name: string; role: string };
+async function requireAuth(req: Request, res: Response, next: NextFunction) {
+  const userId = req.headers['x-user-id'] as string | undefined;
+  if (!userId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  try {
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user || user.disabled) {
+      res.status(403).json({ error: 'Forbidden' });
+      return;
+    }
+    (req as Request & { authUser: AuthUser }).authUser = { id: user.id, name: user.name, role: user.role };
+    next();
+  } catch {
+    res.status(500).json({ error: 'Server error' });
+  }
+}
+function requireCXO(req: Request, res: Response, next: NextFunction) {
+  const r = req as Request & { authUser?: AuthUser };
+  if (r.authUser?.role !== 'CXO') {
+    res.status(403).json({ error: 'CXO only' });
+    return;
+  }
+  next();
+}
+function param(req: Request, key: string): string {
+  const v = req.params[key];
+  return Array.isArray(v) ? (v[0] ?? '') : (v ?? '');
+}
+async function managerCanAccessEntity(userId: string, entityId: string): Promise<boolean> {
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user || user.role === 'CXO') return !!user;
+  const biz = await prisma.business.findUnique({ where: { id: entityId } });
+  return !!biz && (biz.responsible?.toUpperCase() === user.name.toUpperCase());
+}
 
 // --- Routes ---
 
@@ -215,19 +254,33 @@ app.delete('/api/tasks/:id', async (req: Request, res: Response) => {
     }
 });
 
-// Login (Simple mock for now, returns user if email matches)
+// Login (email normalized to lowercase so lookup works)
 app.post('/api/login', async (req: Request, res: Response) => {
-    const { email, password } = req.body;
-    // In a real app, compare hashed passwords
+    const rawEmail = typeof req.body?.email === 'string' ? req.body.email.trim() : '';
+    const password = typeof req.body?.password === 'string' ? req.body.password : '';
+    const email = rawEmail.toLowerCase();
+
+    if (!email || !password) {
+        res.status(401).json({ error: 'Invalid credentials' });
+        return;
+    }
+
     try {
         const user = await prisma.user.findUnique({
             where: { email }
         });
 
         if (user && user.password === password) {
-            // Return user without password
-            const { password, ...userWithoutPassword } = user;
-            res.json(userWithoutPassword);
+            if (user.disabled) {
+                res.status(403).json({ error: 'Account disabled' });
+                return;
+            }
+            const { password: _pw, ...rest } = user;
+            res.json({
+                ...rest,
+                lastLogin: user.lastLogin.toISOString(),
+                permissions: user.permissions ? JSON.parse(user.permissions) : []
+            });
         } else {
             res.status(401).json({ error: 'Invalid credentials' });
         }
@@ -238,6 +291,18 @@ app.post('/api/login', async (req: Request, res: Response) => {
 
 
 // --- User Management ---
+
+// Get CXO user (for Manager to start direct chat)
+app.get('/api/users/cxo', async (req: Request, res: Response) => {
+    try {
+        const cxo = await prisma.user.findFirst({ where: { role: 'CXO', disabled: false } });
+        if (!cxo) return res.status(404).json({ error: 'Not found' });
+        const { password: _, ...rest } = cxo;
+        return res.json({ ...rest, lastLogin: cxo.lastLogin.toISOString(), permissions: [] });
+    } catch (e) {
+        return res.status(500).json({ error: 'Failed to fetch' });
+    }
+});
 
 // Get all users (Managers)
 app.get('/api/users', async (req: Request, res: Response) => {
@@ -254,9 +319,9 @@ app.get('/api/users', async (req: Request, res: Response) => {
                 permissions: u.permissions ? JSON.parse(u.permissions) : []
             };
         });
-        res.json(safeUsers);
+        return res.json(safeUsers);
     } catch (error) {
-        res.status(500).json({ error: 'Failed to fetch users' });
+        return res.status(500).json({ error: 'Failed to fetch users' });
     }
 });
 
@@ -274,13 +339,13 @@ app.put('/api/users/:id/permissions', async (req: Request, res: Response) => {
         });
 
         const { password, ...rest } = user;
-        res.json({
+        return res.json({
             ...rest,
             lastLogin: user.lastLogin.toISOString(),
             permissions: user.permissions ? JSON.parse(user.permissions) : []
         });
     } catch (error) {
-        res.status(500).json({ error: 'Failed to update user permissions' });
+        return res.status(500).json({ error: 'Failed to update user permissions' });
     }
 });
 
@@ -304,22 +369,23 @@ app.put('/api/users/:id/credentials', async (req: Request, res: Response) => {
         });
 
         const { password: _, ...rest } = user;
-        res.json({
+        return res.json({
             ...rest,
             lastLogin: user.lastLogin.toISOString(),
             permissions: user.permissions ? JSON.parse(user.permissions) : []
         });
     } catch (error) {
-        res.status(500).json({ error: 'Failed to update credentials' });
+        return res.status(500).json({ error: 'Failed to update credentials' });
     }
 });
 
-// Reset credentials by email (so CXO can set manager password; login uses email)
-app.post('/api/users/reset-credentials', async (req: Request, res: Response) => {
+// Reset credentials by email — CXO only (managers cannot reset password)
+app.post('/api/users/reset-credentials', requireAuth, requireCXO, async (req: Request, res: Response) => {
+    const r = req as Request & { authUser: AuthUser };
     const { email, newEmail, newPassword } = req.body;
 
     try {
-        const currentEmail = typeof email === 'string' ? email.trim() : '';
+        const currentEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
         if (!currentEmail) {
             return res.status(400).json({ error: 'Email is required' });
         }
@@ -328,50 +394,94 @@ app.post('/api/users/reset-credentials', async (req: Request, res: Response) => 
         if (!user) {
             return res.status(404).json({ error: 'User not found' });
         }
+        if (user.role === 'CXO') {
+            return res.status(400).json({ error: 'Cannot reset CXO credentials via this endpoint' });
+        }
 
         const data: { email?: string; password?: string } = {};
-        if (typeof newEmail === 'string' && newEmail.trim()) data.email = newEmail.trim();
+        if (typeof newEmail === 'string' && newEmail.trim()) data.email = newEmail.trim().toLowerCase();
         if (typeof newPassword === 'string' && newPassword) data.password = newPassword;
 
         if (Object.keys(data).length === 0) {
             return res.status(400).json({ error: 'Provide newEmail or newPassword to update' });
         }
 
+        const beforeJson = JSON.stringify({ email: user.email });
         const updated = await prisma.user.update({
             where: { id: user.id },
             data
         });
+        await prisma.auditLog.create({
+            data: {
+                actorUserId: r.authUser.id,
+                actionType: 'RESET_CREDENTIALS',
+                targetType: 'User',
+                targetId: user.id,
+                beforeJson,
+                afterJson: JSON.stringify({ email: updated.email }),
+            },
+        });
 
         const { password: _, ...rest } = updated;
-        res.json({
+        return res.json({
             ...rest,
             lastLogin: updated.lastLogin.toISOString(),
             permissions: updated.permissions ? JSON.parse(updated.permissions) : []
         });
     } catch (error) {
-        res.status(500).json({ error: 'Failed to update credentials' });
+        return res.status(500).json({ error: 'Failed to update credentials' });
     }
 });
 
 // Create User (Manager)
 app.post('/api/users', async (req: Request, res: Response) => {
-    const { name, email, password, avatar } = req.body;
+    const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
+    const rawEmail = typeof req.body?.email === 'string' ? req.body.email.trim() : '';
+    const password = typeof req.body?.password === 'string' ? req.body.password : '';
+    const avatar = typeof req.body?.avatar === 'string' ? req.body.avatar : undefined;
+    const permissionsInput = req.body?.permissions;
+
+    if (!name || name.length < 2) {
+        res.status(400).json({ error: 'Name must be at least 2 characters' });
+        return;
+    }
+    if (!rawEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(rawEmail)) {
+        res.status(400).json({ error: 'Valid email is required' });
+        return;
+    }
+    if (!password || password.length < 4) {
+        res.status(400).json({ error: 'Password must be at least 4 characters' });
+        return;
+    }
+
+    const email = rawEmail.toLowerCase();
+
     try {
+        const existing = await prisma.user.findUnique({ where: { email } });
+        if (existing) {
+            res.status(400).json({ error: 'Email already registered' });
+            return;
+        }
+
+        const permissionsJson = JSON.stringify(
+            Array.isArray(permissionsInput) ? permissionsInput : []
+        );
+
         const newUser = await prisma.user.create({
             data: {
                 name,
                 email,
-                password, // In real app, hash this!
+                password,
                 role: 'Manager',
-                avatar: avatar || `https://i.pravatar.cc/150?u=${email}`,
-                permissions: "[]"
+                avatar: avatar || `https://i.pravatar.cc/150?u=${encodeURIComponent(email)}`,
+                permissions: permissionsJson
             }
         });
         const { password: _, ...rest } = newUser;
         res.json({
             ...rest,
             lastLogin: newUser.lastLogin.toISOString(),
-            permissions: []
+            permissions: newUser.permissions ? JSON.parse(newUser.permissions) : []
         });
     } catch (error) {
         res.status(500).json({ error: 'Failed to create user' });
@@ -387,6 +497,455 @@ app.delete('/api/users/:id', async (req: Request, res: Response) => {
     } catch (error) {
         res.status(500).json({ error: 'Failed to delete user' });
     }
+});
+
+// ========== CHAT (MVP) ==========
+// GET /api/chat/threads — list threads for current user (RBAC), with lastMessage for preview
+app.get('/api/chat/threads', requireAuth, async (req: Request, res: Response) => {
+  const r = req as Request & { authUser: AuthUser };
+  try {
+    const uid = r.authUser!.id;
+    const memberships = await prisma.chatThreadMember.findMany({
+      where: { userId: uid },
+      include: { thread: true },
+    });
+    const threadIds = memberships.map((m) => m.threadId);
+    const threads = await prisma.chatThread.findMany({
+      where: { id: { in: threadIds } },
+      include: { members: true },
+      orderBy: { createdAt: 'desc' },
+    });
+    let result = threads;
+    if (r.authUser!.role === 'Manager') {
+      const allowed = await Promise.all(
+        threads.map(async (t) => {
+          if (t.type === 'DIRECT' || t.type === 'GROUP') return true;
+          if (!t.entityId) return false;
+          return managerCanAccessEntity(uid, t.entityId);
+        })
+      );
+      result = threads.filter((_, i) => allowed[i]);
+    }
+    // Attach last message per thread for WhatsApp-style preview
+    if (result.length > 0) {
+      const ids = result.map((t) => t.id);
+      const latestMessages = await prisma.chatMessage.findMany({
+        where: { threadId: { in: ids } },
+        orderBy: { createdAt: 'desc' },
+      });
+      const lastByThread = new Map<string, { body: string; createdAt: Date; senderUserId: string | null }>();
+      for (const msg of latestMessages) {
+        if (!lastByThread.has(msg.threadId)) lastByThread.set(msg.threadId, { body: msg.body, createdAt: msg.createdAt, senderUserId: msg.senderUserId });
+      }
+      const withLast = result.map((t) => {
+        const last = lastByThread.get(t.id);
+        return last ? { ...t, lastMessage: last } : t;
+      });
+      return res.json(withLast);
+    }
+    return res.json(result);
+  } catch (e) {
+    return res.status(500).json({ error: 'Failed to fetch threads' });
+  }
+});
+
+// POST /api/chat/threads — create direct, entity, or group thread
+app.post('/api/chat/threads', requireAuth, async (req: Request, res: Response) => {
+  const r = req as Request & { authUser: AuthUser };
+  try {
+    const { type, entityId, otherUserId, memberIds, name, avatar } = req.body as {
+      type: 'DIRECT' | 'ENTITY' | 'GROUP'; entityId?: string; otherUserId?: string; memberIds?: string[];
+      name?: string; avatar?: string;
+    };
+    const uid = r.authUser!.id;
+    if (type === 'GROUP' && Array.isArray(memberIds) && memberIds.length > 0) {
+      if (r.authUser!.role !== 'CXO') return res.status(403).json({ error: 'Only CXO can create groups' });
+      const allIds = [uid, ...memberIds.filter((id: string) => id && id !== uid)];
+      const unique = [...new Set(allIds)];
+      const thread = await prisma.chatThread.create({
+        data: {
+          type: 'GROUP',
+          entityId: null,
+          name: typeof name === 'string' ? name.trim() || null : null,
+          avatar: typeof avatar === 'string' ? avatar.trim() || null : null,
+          members: { create: unique.map((userId) => ({ userId })) },
+        },
+        include: { members: true },
+      });
+      return res.json(thread);
+    }
+    if (type === 'ENTITY' && entityId) {
+      const can = await managerCanAccessEntity(uid, entityId);
+      if (!can) return res.status(403).json({ error: 'Forbidden' });
+      let thread = await prisma.chatThread.findFirst({ where: { type: 'ENTITY', entityId } });
+      if (thread) {
+        const isMember = await prisma.chatThreadMember.findUnique({ where: { threadId_userId: { threadId: thread.id, userId: uid } } });
+        if (!isMember) {
+          await prisma.chatThreadMember.create({ data: { threadId: thread.id, userId: uid } });
+        }
+        return res.json(thread);
+      }
+      thread = await prisma.chatThread.create({
+        data: {
+          type: 'ENTITY',
+          entityId,
+          members: { create: [{ userId: uid }] },
+        },
+      });
+      const cxo = await prisma.user.findFirst({ where: { role: 'CXO' } });
+      if (cxo) {
+        await prisma.chatThreadMember.create({ data: { threadId: thread.id, userId: cxo.id } });
+      }
+      const managerName = (await prisma.user.findUnique({ where: { id: uid } }))?.name;
+      const biz = await prisma.business.findUnique({ where: { id: entityId } });
+      if (biz && biz.responsible && managerName && biz.responsible.toUpperCase() === managerName.toUpperCase()) {
+        const otherManagers = await prisma.user.findMany({ where: { role: 'Manager', name: biz.responsible } });
+        for (const m of otherManagers) {
+          if (m.id !== uid) {
+            try {
+              await prisma.chatThreadMember.create({ data: { threadId: thread.id, userId: m.id } });
+            } catch (_) {}
+          }
+        }
+      }
+      return res.json(thread);
+    }
+    if (type === 'DIRECT' && otherUserId) {
+      const allDirect = await prisma.chatThread.findMany({
+        where: { type: 'DIRECT' },
+        include: { members: true },
+      });
+      const existing = allDirect.find(
+        (t) => t.members.length === 2 && t.members.some((m) => m.userId === uid) && t.members.some((m) => m.userId === otherUserId)
+      );
+      if (existing) return res.json(existing);
+      const newThread = await prisma.chatThread.create({
+        data: {
+          type: 'DIRECT',
+          members: { create: [{ userId: uid }, { userId: otherUserId }] },
+        },
+        include: { members: true },
+      });
+      return res.json(newThread);
+    }
+    return res.status(400).json({ error: 'Invalid type or missing entityId/otherUserId' });
+  } catch (e) {
+    return res.status(500).json({ error: 'Failed to create thread' });
+  }
+});
+
+// GET /api/chat/threads/:id/messages
+app.get('/api/chat/threads/:id/messages', requireAuth, async (req: Request, res: Response) => {
+  const r = req as Request & { authUser: AuthUser };
+  try {
+    const id = param(req, 'id');
+    const uid = r.authUser!.id;
+    const member = await prisma.chatThreadMember.findUnique({ where: { threadId_userId: { threadId: id, userId: uid } } });
+    if (!member) return res.status(403).json({ error: 'Forbidden' });
+    const thread = await prisma.chatThread.findUnique({ where: { id: member.threadId } });
+    if (!thread) return res.status(403).json({ error: 'Forbidden' });
+    if (thread.type === 'ENTITY' && thread.entityId) {
+      const can = await managerCanAccessEntity(uid, thread.entityId);
+      if (!can) return res.status(403).json({ error: 'Forbidden' });
+    }
+    const messages = await prisma.chatMessage.findMany({ where: { threadId: id }, orderBy: { createdAt: 'asc' } });
+    return res.json(messages);
+  } catch (e) {
+    return res.status(500).json({ error: 'Failed to fetch messages' });
+  }
+});
+
+// POST /api/chat/threads/:id/messages
+app.post('/api/chat/threads/:id/messages', requireAuth, async (req: Request, res: Response) => {
+  const r = req as Request & { authUser: AuthUser };
+  try {
+    const id = param(req, 'id');
+    const { body, messageType, replyToMessageId, replyToBody } = req.body as {
+      body?: string; messageType?: string; replyToMessageId?: string; replyToBody?: string;
+    };
+    const uid = r.authUser!.id;
+    const member = await prisma.chatThreadMember.findUnique({ where: { threadId_userId: { threadId: id, userId: uid } } });
+    if (!member) return res.status(403).json({ error: 'Forbidden' });
+    const thread = await prisma.chatThread.findUnique({ where: { id: member.threadId } });
+    if (!thread) return res.status(403).json({ error: 'Forbidden' });
+    if (thread.type === 'ENTITY' && thread.entityId) {
+      const can = await managerCanAccessEntity(uid, thread.entityId);
+      if (!can) return res.status(403).json({ error: 'Forbidden' });
+    }
+    const msg = await prisma.chatMessage.create({
+      data: {
+        threadId: id,
+        senderUserId: uid,
+        body: typeof body === 'string' ? body : '',
+        messageType: messageType === 'SYSTEM' ? 'SYSTEM' : 'USER',
+        replyToMessageId: typeof replyToMessageId === 'string' && replyToMessageId ? replyToMessageId : undefined,
+        replyToBody: typeof replyToBody === 'string' ? replyToBody : undefined,
+      },
+    });
+    return res.json(msg);
+  } catch (e) {
+    return res.status(500).json({ error: 'Failed to send message' });
+  }
+});
+
+// PATCH /api/chat/threads/:id/read — mark thread as read (updates current user's lastReadAt)
+app.patch('/api/chat/threads/:id/read', requireAuth, async (req: Request, res: Response) => {
+  const r = req as Request & { authUser: AuthUser };
+  try {
+    const id = param(req, 'id');
+    const uid = r.authUser!.id;
+    const member = await prisma.chatThreadMember.findUnique({ where: { threadId_userId: { threadId: id, userId: uid } } });
+    if (!member) return res.status(403).json({ error: 'Forbidden' });
+    await prisma.chatThreadMember.update({
+      where: { threadId_userId: { threadId: id, userId: uid } },
+      data: { lastReadAt: new Date() },
+    });
+    const updated = await prisma.chatThread.findUnique({ where: { id }, include: { members: true } });
+    return res.json(updated);
+  } catch (e) {
+    return res.status(500).json({ error: 'Failed to mark read' });
+  }
+});
+
+// POST /api/chat/threads/:id/members — add participants to group (CXO only)
+app.post('/api/chat/threads/:id/members', requireAuth, async (req: Request, res: Response) => {
+  const r = req as Request & { authUser: AuthUser };
+  if (r.authUser!.role !== 'CXO') return res.status(403).json({ error: 'Only CXO can add participants' });
+  try {
+    const id = param(req, 'id');
+    const { userIds } = req.body as { userIds?: string[] };
+    if (!Array.isArray(userIds) || userIds.length === 0) return res.status(400).json({ error: 'userIds array required' });
+    const thread = await prisma.chatThread.findUnique({ where: { id }, include: { members: true } });
+    if (!thread) return res.status(404).json({ error: 'Thread not found' });
+    if (thread.type !== 'GROUP') return res.status(400).json({ error: 'Not a group thread' });
+    const existingIds = new Set(thread.members.map((m) => m.userId));
+    const toAdd = userIds.filter((userId) => userId && !existingIds.has(userId));
+    for (const userId of toAdd) {
+      try {
+        await prisma.chatThreadMember.create({ data: { threadId: id, userId } });
+      } catch (_) {}
+    }
+    const updated = await prisma.chatThread.findUnique({ where: { id }, include: { members: true } });
+    return res.json(updated);
+  } catch (e) {
+    return res.status(500).json({ error: 'Failed to add participants' });
+  }
+});
+
+// PATCH /api/chat/threads/:id — update group name/avatar (CXO only, GROUP only)
+app.patch('/api/chat/threads/:id', requireAuth, async (req: Request, res: Response) => {
+  const r = req as Request & { authUser: AuthUser };
+  if (r.authUser!.role !== 'CXO') return res.status(403).json({ error: 'Only CXO can edit groups' });
+  try {
+    const id = param(req, 'id');
+    const thread = await prisma.chatThread.findUnique({ where: { id } });
+    if (!thread) return res.status(404).json({ error: 'Thread not found' });
+    if (thread.type !== 'GROUP') return res.status(400).json({ error: 'Not a group thread' });
+    const { name, avatar } = req.body as { name?: string; avatar?: string };
+    const data: { name?: string | null; avatar?: string | null } = {};
+    if (name !== undefined) data.name = typeof name === 'string' ? name : null;
+    if (avatar !== undefined) data.avatar = typeof avatar === 'string' ? avatar : null;
+    const updated = await prisma.chatThread.update({ where: { id }, data });
+    return res.json(updated);
+  } catch (e) {
+    return res.status(500).json({ error: 'Failed to update group' });
+  }
+});
+
+// DELETE /api/chat/threads/:id/members/:userId — remove participant from group (CXO only)
+app.delete('/api/chat/threads/:id/members/:userId', requireAuth, async (req: Request, res: Response) => {
+  const r = req as Request & { authUser: AuthUser };
+  if (r.authUser!.role !== 'CXO') return res.status(403).json({ error: 'Only CXO can remove participants' });
+  try {
+    const id = param(req, 'id');
+    const userId = param(req, 'userId');
+    const thread = await prisma.chatThread.findUnique({ where: { id }, include: { members: true } });
+    if (!thread) return res.status(404).json({ error: 'Thread not found' });
+    if (thread.type !== 'GROUP') return res.status(400).json({ error: 'Not a group thread' });
+    await prisma.chatThreadMember.deleteMany({ where: { threadId: id, userId } });
+    const updated = await prisma.chatThread.findUnique({ where: { id }, include: { members: true } });
+    return res.json(updated);
+  } catch (e) {
+    return res.status(500).json({ error: 'Failed to remove participant' });
+  }
+});
+
+// POST /api/chat/threads/:id/leave — leave thread (remove current user). If group has no members left, delete thread.
+app.post('/api/chat/threads/:id/leave', requireAuth, async (req: Request, res: Response) => {
+  const r = req as Request & { authUser: AuthUser };
+  try {
+    const id = param(req, 'id');
+    const uid = r.authUser!.id;
+    const member = await prisma.chatThreadMember.findUnique({ where: { threadId_userId: { threadId: id, userId: uid } } });
+    if (!member) return res.status(403).json({ error: 'Not a member' });
+    const thread = await prisma.chatThread.findUnique({ where: { id }, include: { members: true } });
+    if (!thread) return res.status(404).json({ error: 'Thread not found' });
+    await prisma.chatThreadMember.deleteMany({ where: { threadId: id, userId: uid } });
+    const remaining = await prisma.chatThreadMember.count({ where: { threadId: id } });
+    if (remaining === 0) await prisma.chatThread.delete({ where: { id } });
+    return res.json({ left: true });
+  } catch (e) {
+    return res.status(500).json({ error: 'Failed to leave' });
+  }
+});
+
+// DELETE /api/chat/threads/:id — delete group entirely (CXO only, GROUP only)
+app.delete('/api/chat/threads/:id', requireAuth, async (req: Request, res: Response) => {
+  const r = req as Request & { authUser: AuthUser };
+  if (r.authUser!.role !== 'CXO') return res.status(403).json({ error: 'Only CXO can delete groups' });
+  try {
+    const id = param(req, 'id');
+    const thread = await prisma.chatThread.findUnique({ where: { id } });
+    if (!thread) return res.status(404).json({ error: 'Thread not found' });
+    if (thread.type !== 'GROUP') return res.status(400).json({ error: 'Only groups can be deleted' });
+    await prisma.chatThread.delete({ where: { id } });
+    return res.json({ deleted: true });
+  } catch (e) {
+    return res.status(500).json({ error: 'Failed to delete group' });
+  }
+});
+
+// ========== MEETINGS (MVP) ==========
+// POST /api/entities/:entityId/meetings/start
+app.post('/api/entities/:entityId/meetings/start', requireAuth, async (req: Request, res: Response) => {
+  const r = req as Request & { authUser: AuthUser };
+  try {
+    const entityId = param(req, 'entityId');
+    const uid = r.authUser!.id;
+    const can = await managerCanAccessEntity(uid, entityId);
+    if (!can) return res.status(403).json({ error: 'Forbidden' });
+    let thread = await prisma.chatThread.findFirst({ where: { type: 'ENTITY', entityId } });
+    if (!thread) {
+      thread = await prisma.chatThread.create({
+        data: { type: 'ENTITY', entityId, members: { create: [{ userId: uid }] } },
+      });
+      const cxo = await prisma.user.findFirst({ where: { role: 'CXO' } });
+      if (cxo) await prisma.chatThreadMember.create({ data: { threadId: thread.id, userId: cxo.id } });
+    }
+    const meetLink = typeof req.body?.meetLink === 'string' ? req.body.meetLink.trim() || null : null;
+    const meeting = await prisma.meeting.create({
+      data: { entityId, threadId: thread.id, createdByUserId: uid, meetLink, startTime: new Date() },
+    });
+    await prisma.chatMessage.create({
+      data: {
+        threadId: thread.id,
+        senderUserId: null,
+        body: meetLink ? `Instant meet started — Join: ${meetLink}` : 'Instant meet started',
+        messageType: 'SYSTEM',
+      },
+    });
+    return res.json(meeting);
+  } catch (e) {
+    return res.status(500).json({ error: 'Failed to start meeting' });
+  }
+});
+
+// POST /api/entities/:entityId/meetings/:meetingId/end
+app.post('/api/entities/:entityId/meetings/:meetingId/end', requireAuth, async (req: Request, res: Response) => {
+  const r = req as Request & { authUser: AuthUser };
+  try {
+    const entityId = param(req, 'entityId');
+    const meetingId = param(req, 'meetingId');
+    const uid = r.authUser!.id;
+    const can = await managerCanAccessEntity(uid, entityId);
+    if (!can) return res.status(403).json({ error: 'Forbidden' });
+    const meeting = await prisma.meeting.findFirst({ where: { id: meetingId, entityId } });
+    if (!meeting || meeting.endTime) return res.status(404).json({ error: 'Meeting not found or already ended' });
+    const endTime = new Date();
+    const durationMinutes = Math.ceil((endTime.getTime() - meeting.startTime.getTime()) / 60000);
+    await prisma.meeting.update({
+      where: { id: meetingId },
+      data: { endTime, durationMinutes },
+    });
+    await prisma.chatMessage.create({
+      data: {
+        threadId: meeting.threadId,
+        senderUserId: null,
+        body: `Meeting ended — Duration: ${durationMinutes} minutes`,
+        messageType: 'SYSTEM',
+      },
+    });
+    return res.json({ endTime, durationMinutes });
+  } catch (e) {
+    return res.status(500).json({ error: 'Failed to end meeting' });
+  }
+});
+
+// GET /api/entities/:entityId/meetings/history
+app.get('/api/entities/:entityId/meetings/history', requireAuth, async (req: Request, res: Response) => {
+  const r = req as Request & { authUser: AuthUser };
+  try {
+    const entityId = param(req, 'entityId');
+    const uid = r.authUser!.id;
+    const can = await managerCanAccessEntity(uid, entityId);
+    if (!can) return res.status(403).json({ error: 'Forbidden' });
+    const meetings = await prisma.meeting.findMany({
+      where: { entityId },
+      orderBy: { startTime: 'desc' },
+    });
+    return res.json(meetings);
+  } catch (e) {
+    return res.status(500).json({ error: 'Failed to fetch meetings' });
+  }
+});
+
+// ========== CXO ADMIN (managers only) ==========
+// POST /api/cxo/managers/:id/reset-credentials
+app.post('/api/cxo/managers/:id/reset-credentials', requireAuth, requireCXO, async (req: Request, res: Response) => {
+  const r = req as Request & { authUser: AuthUser };
+  try {
+    const managerId = param(req, 'id');
+    const { newEmail, newPassword } = req.body;
+    const manager = await prisma.user.findUnique({ where: { id: managerId } });
+    if (!manager || manager.role !== 'Manager') return res.status(404).json({ error: 'Manager not found' });
+    const data: { email?: string; password?: string } = {};
+    if (typeof newEmail === 'string' && newEmail.trim()) data.email = newEmail.trim().toLowerCase();
+    if (typeof newPassword === 'string' && newPassword) data.password = newPassword;
+    if (Object.keys(data).length === 0) return res.status(400).json({ error: 'Provide newEmail or newPassword' });
+    const beforeJson = JSON.stringify({ email: manager.email });
+    const updated = await prisma.user.update({ where: { id: managerId }, data });
+    await prisma.auditLog.create({
+      data: { actorUserId: r.authUser.id, actionType: 'RESET_CREDENTIALS', targetType: 'User', targetId: managerId, beforeJson, afterJson: JSON.stringify({ email: updated.email }) },
+    });
+    const { password: _, ...rest } = updated;
+    return res.json({ ...rest, lastLogin: updated.lastLogin.toISOString(), permissions: updated.permissions ? JSON.parse(updated.permissions) : [] });
+  } catch (e) {
+    return res.status(500).json({ error: 'Failed to reset credentials' });
+  }
+});
+
+// POST /api/cxo/managers/:id/disable
+app.post('/api/cxo/managers/:id/disable', requireAuth, requireCXO, async (req: Request, res: Response) => {
+  const r = req as Request & { authUser: AuthUser };
+  try {
+    const managerId = param(req, 'id');
+    const manager = await prisma.user.findUnique({ where: { id: managerId } });
+    if (!manager || manager.role !== 'Manager') return res.status(404).json({ error: 'Manager not found' });
+    await prisma.user.update({ where: { id: managerId }, data: { disabled: true } });
+    await prisma.auditLog.create({
+      data: { actorUserId: r.authUser.id, actionType: 'DISABLE_MANAGER', targetType: 'User', targetId: managerId },
+    });
+    return res.json({ success: true });
+  } catch (e) {
+    return res.status(500).json({ error: 'Failed to disable' });
+  }
+});
+
+// POST /api/cxo/managers/:id/enable
+app.post('/api/cxo/managers/:id/enable', requireAuth, requireCXO, async (req: Request, res: Response) => {
+  const r = req as Request & { authUser: AuthUser };
+  try {
+    const managerId = param(req, 'id');
+    const manager = await prisma.user.findUnique({ where: { id: managerId } });
+    if (!manager || manager.role !== 'Manager') return res.status(404).json({ error: 'Manager not found' });
+    await prisma.user.update({ where: { id: managerId }, data: { disabled: false } });
+    await prisma.auditLog.create({
+      data: { actorUserId: r.authUser.id, actionType: 'ENABLE_MANAGER', targetType: 'User', targetId: managerId },
+    });
+    return res.json({ success: true });
+  } catch (e) {
+    return res.status(500).json({ error: 'Failed to enable' });
+  }
 });
 
 app.listen(port, () => {
