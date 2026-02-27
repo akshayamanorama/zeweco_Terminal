@@ -176,8 +176,8 @@ export const MemberManagement: React.FC<MemberManagementProps> = ({
           avatar: `https://i.pravatar.cc/150?u=${encodeURIComponent(email)}`,
         })
       );
-      onAddManager(created);
-      if (created.permissions === undefined) (created as User).permissions = [];
+      const userWithPerms: User = { ...created, permissions: created.permissions ?? [] };
+      onAddManager(userWithPerms);
       setNewName('');
       setNewEmail('');
       setNewPassword('');
@@ -231,47 +231,43 @@ export const MemberManagement: React.FC<MemberManagementProps> = ({
   return (
     <>
       <div className="fixed inset-0 bg-black/20 dark:bg-black/60 backdrop-blur-sm z-[60]" onClick={onClose} />
-      <div className="fixed top-0 right-0 h-full w-full sm:w-[440px] bg-white dark:bg-zinc-950 border-l border-zinc-200 dark:border-zinc-800 shadow-2xl z-[70] animate-in slide-in-from-right duration-300 flex flex-col">
-        <header className="p-6 border-b border-zinc-100 dark:border-zinc-900 flex justify-between items-start bg-zinc-50/50 dark:bg-transparent">
+      <div className="fixed top-0 right-0 h-full w-full sm:max-w-[380px] bg-white dark:bg-zinc-950 border-l border-zinc-200 dark:border-zinc-800 shadow-2xl z-[70] animate-in slide-in-from-right duration-300 flex flex-col">
+        <header className="px-4 py-3 border-b border-zinc-100 dark:border-zinc-900 flex justify-between items-center bg-zinc-50/50 dark:bg-transparent">
           <div>
-            <h2 className="text-xl font-bold text-zinc-900 dark:text-white tracking-tight">
-              Team Management
-            </h2>
-            <p className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-500 uppercase tracking-[0.2em] mt-1.5">Authorized CXO Access Only</p>
+            <h2 className="text-sm font-bold text-zinc-900 dark:text-white tracking-tight">Team Management</h2>
+            <p className="text-[9px] font-medium text-zinc-500 dark:text-zinc-500 uppercase tracking-wider mt-0.5">CXO Only</p>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-xl transition-colors text-zinc-500 dark:text-zinc-400">
-            <X size={20} />
+          <button onClick={onClose} className="p-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-lg text-zinc-500 dark:text-zinc-400">
+            <X size={18} />
           </button>
         </header>
 
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex-1 overflow-y-auto p-4">
           {selectedManager ? (
-            <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
-              <button onClick={() => setSelectedManager(null)} className="text-sm font-medium text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white flex items-center gap-1.5 transition-colors">
-                <ArrowLeft size={16} /> Back to List
+            <div className="space-y-4 animate-in slide-in-from-right-4 duration-300">
+              <button onClick={() => setSelectedManager(null)} className="text-xs font-medium text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 flex items-center gap-1">
+                <ArrowLeft size={14} /> Back
               </button>
 
-              <div className="flex items-center gap-4 pb-5 border-b border-zinc-200 dark:border-zinc-800">
-                <img src={selectedManager.avatar} className="w-14 h-14 rounded-full border-2 border-zinc-200 dark:border-zinc-700 object-cover" alt="" />
-                <div>
-                  <h3 className="text-lg font-bold text-zinc-900 dark:text-white">{selectedManager.role}</h3>
-                  <p className="text-sm text-zinc-500 dark:text-zinc-400">{selectedManager.email}</p>
+              <div className="flex items-center gap-3 pb-3 border-b border-zinc-200 dark:border-zinc-800">
+                <img src={selectedManager.avatar} className="w-10 h-10 rounded-full border border-zinc-200 dark:border-zinc-700 object-cover shrink-0" alt="" />
+                <div className="min-w-0">
+                  <h3 className="text-sm font-semibold text-zinc-900 dark:text-white truncate">{selectedManager.name}</h3>
+                  <p className="text-[10px] text-zinc-500 dark:text-zinc-400 truncate">{selectedManager.email}</p>
                 </div>
               </div>
 
-              <div className="space-y-3">
+              <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <h4 className="text-[10px] font-semibold text-zinc-600 dark:text-zinc-400 uppercase tracking-[0.12em]">Access Control</h4>
-                  <span className="text-[10px] font-medium px-2.5 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-full">
-                    {permissions.length} Active
-                  </span>
+                  <h4 className="text-[9px] font-semibold text-zinc-500 dark:text-zinc-500 uppercase tracking-wider">Authority</h4>
+                  <span className="text-[9px] font-medium px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded">{permissions.length} active</span>
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-1">
                   {[
-                    { id: 'can_manage_team', label: 'Manage Team Members', desc: 'Can add or remove other managers' },
-                    { id: 'can_delete_tasks', label: 'Delete Tasks', desc: 'Permanent deletion of tasks' },
-                    { id: 'can_edit_business', label: 'Edit Business Profile', desc: 'Modify core business details and status' },
-                    { id: 'can_view_financials', label: 'View Financial Data', desc: 'Access to sensitive financial modules' }
+                    { id: 'can_manage_team', label: 'Manage Team Members' },
+                    { id: 'can_delete_tasks', label: 'Delete Tasks' },
+                    { id: 'can_edit_business', label: 'Edit Business Profile' },
+                    { id: 'can_view_financials', label: 'View Financial Data' }
                   ].map(perm => {
                     const isActive = permissions.includes(perm.id);
                     return (
@@ -279,120 +275,86 @@ export const MemberManagement: React.FC<MemberManagementProps> = ({
                         key={perm.id}
                         type="button"
                         onClick={(e) => { e.preventDefault(); e.stopPropagation(); togglePermission(perm.id); }}
-                        className={`w-full p-4 rounded-xl border transition-all cursor-pointer flex items-start gap-3 text-left ${isActive ? 'bg-blue-50/80 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800' : 'bg-zinc-50 dark:bg-zinc-900/30 border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700'}`}
+                        className={`w-full flex items-center gap-2.5 py-2 px-3 rounded-lg border text-left transition-all ${isActive ? 'bg-blue-50/80 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800' : 'bg-zinc-50/80 dark:bg-zinc-900/30 border-zinc-200 dark:border-zinc-700 hover:border-zinc-300'}`}
                       >
-                        <div className={`mt-0.5 w-4 h-4 rounded border flex items-center justify-center shrink-0 ${isActive ? 'bg-blue-500 border-blue-500' : 'border-zinc-300 dark:border-zinc-600'}`}>
-                          {isActive && <Check size={10} className="text-white" strokeWidth={4} />}
+                        <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 ${isActive ? 'bg-blue-500 border-blue-500' : 'border-zinc-300 dark:border-zinc-600'}`}>
+                          {isActive && <Check size={8} className="text-white" strokeWidth={4} />}
                         </div>
-                        <div className="min-w-0">
-                          <p className={`text-sm font-semibold ${isActive ? 'text-zinc-900 dark:text-zinc-100' : 'text-zinc-700 dark:text-zinc-300'}`}>{perm.label}</p>
-                          <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">{perm.desc}</p>
-                        </div>
+                        <span className={`text-xs font-medium truncate ${isActive ? 'text-zinc-900 dark:text-zinc-100' : 'text-zinc-600 dark:text-zinc-400'}`}>{perm.label}</span>
                       </button>
                     );
                   })}
                 </div>
               </div>
 
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <Key size={14} className="text-zinc-500 dark:text-zinc-400 shrink-0" />
-                  <h4 className="text-[10px] font-semibold text-zinc-600 dark:text-zinc-400 uppercase tracking-[0.12em]">Reset Credentials</h4>
-                </div>
-                <p className="text-xs text-zinc-500 dark:text-zinc-400">Manager forgot password? Set new email and/or password here.</p>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-semibold text-zinc-600 dark:text-zinc-400 uppercase tracking-[0.1em] block">New Email</label>
+              <div className="space-y-2">
+                <h4 className="text-[9px] font-semibold text-zinc-500 dark:text-zinc-500 uppercase tracking-wider flex items-center gap-1.5">
+                  <Key size={12} /> Reset credentials
+                </h4>
+                <div className="space-y-1.5">
                   <input
                     type="email"
                     value={resetEmail}
                     onChange={e => setResetEmail(e.target.value)}
-                    placeholder="manager@zeweco.com"
-                    className="w-full bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-700 rounded-xl py-3 px-4 text-sm text-zinc-900 dark:text-white placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                    placeholder="New email"
+                    className="w-full bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-700 rounded-lg py-2 px-3 text-xs text-zinc-900 dark:text-white placeholder:text-zinc-400 focus:outline-none focus:ring-1 focus:ring-blue-500/30"
                   />
-                  <label className="text-[10px] font-semibold text-zinc-600 dark:text-zinc-400 uppercase tracking-[0.1em] block">New Password</label>
                   <input
                     type="password"
                     value={resetPassword}
                     onChange={e => setResetPassword(e.target.value)}
-                    placeholder="Leave blank to keep current"
-                    className="w-full bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-700 rounded-xl py-3 px-4 text-sm text-zinc-900 dark:text-white placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                    placeholder="New password (blank = keep)"
+                    className="w-full bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-700 rounded-lg py-2 px-3 text-xs text-zinc-900 dark:text-white placeholder:text-zinc-400 focus:outline-none focus:ring-1 focus:ring-blue-500/30"
                   />
                 </div>
-                {credentialMessage && (
-                  <p className="text-xs text-green-600 dark:text-green-400 font-medium">{credentialMessage}</p>
-                )}
+                {credentialMessage && <p className="text-[10px] text-green-600 dark:text-green-400 font-medium">{credentialMessage}</p>}
                 <button
                   type="button"
                   onClick={handleUpdateCredentials}
                   disabled={isResettingCredentials}
-                  className="w-full py-3.5 bg-amber-400 hover:bg-amber-500 text-zinc-900 font-semibold text-sm rounded-xl shadow-md hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full py-2.5 bg-amber-400 hover:bg-amber-500 text-zinc-900 text-xs font-semibold rounded-lg disabled:opacity-50"
                 >
                   {isResettingCredentials ? 'Updating...' : 'Update Email & Password'}
                 </button>
               </div>
 
-              <div className="space-y-3">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <FolderOpen size={14} className="text-zinc-500 dark:text-zinc-400 shrink-0" />
-                  <h4 className="text-[10px] font-semibold text-zinc-600 dark:text-zinc-400 uppercase tracking-[0.12em]">Assigned Projects</h4>
-                  <span className="text-sm font-medium text-zinc-600 dark:text-zinc-400 ml-auto">{assignedCount} of {totalCount}</span>
-                </div>
-                <p className="text-xs text-zinc-500 dark:text-zinc-400">Only assigned businesses are visible to this manager in their login. Assign or unassign below.</p>
-                <div className="space-y-2 max-h-40 overflow-y-auto">
-                  {assignedBusinesses.slice(0, 20).map(biz => (
-                    <div key={biz.id} className="flex items-center justify-between gap-2 p-3 bg-zinc-50 dark:bg-zinc-900/30 border border-zinc-200 dark:border-zinc-800 rounded-xl">
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-4 h-4 rounded border border-zinc-300 dark:border-zinc-600 bg-blue-500 flex items-center justify-center shrink-0">
-                          <Check size={10} className="text-white" strokeWidth={4} />
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 truncate">{biz.name}</p>
-                          <p className="text-xs text-zinc-500 dark:text-zinc-400">{biz.code} · {biz.stage}</p>
-                        </div>
+              <div className="space-y-2">
+                <h4 className="text-[9px] font-semibold text-zinc-500 dark:text-zinc-500 uppercase tracking-wider flex items-center gap-1.5">
+                  <FolderOpen size={12} /> Assigned ({assignedCount}/{totalCount})
+                </h4>
+                <div className="space-y-1 max-h-28 overflow-y-auto">
+                  {assignedBusinesses.slice(0, 15).map(biz => (
+                    <div key={biz.id} className="flex items-center justify-between gap-2 py-1.5 px-2.5 bg-zinc-50 dark:bg-zinc-900/30 border border-zinc-200 dark:border-zinc-800 rounded-lg">
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium text-zinc-900 dark:text-zinc-100 truncate">{biz.name}</p>
+                        <p className="text-[9px] text-zinc-500 dark:text-zinc-400">{biz.code}</p>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => handleUnassign(biz)}
-                        className="shrink-0 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 px-2.5 py-1.5 rounded-lg transition-colors"
-                      >
-                        Unassign
-                      </button>
+                      <button type="button" onClick={() => handleUnassign(biz)} className="shrink-0 text-[10px] font-medium text-red-600 dark:text-red-400 hover:underline">Unassign</button>
                     </div>
                   ))}
                 </div>
                 {unassignedBusinesses.length > 0 && (
-                  <div className="space-y-1.5 mt-3">
-                    <p className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-500 uppercase tracking-wider">Assign project</p>
-                    <div className="space-y-1 max-h-32 overflow-y-auto">
-                      {unassignedBusinesses.slice(0, 15).map(biz => (
-                        <div key={biz.id} className="flex items-center justify-between gap-2 p-2.5 bg-white dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-700 rounded-lg">
-                          <div className="min-w-0">
-                            <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100 truncate">{biz.name}</p>
-                            <p className="text-[10px] text-zinc-500 dark:text-zinc-400">{biz.code}</p>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => handleAssign(biz)}
-                            className="shrink-0 text-xs font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 px-2.5 py-1.5 rounded-lg transition-colors"
-                          >
-                            Assign
-                          </button>
-                        </div>
-                      ))}
-                    </div>
+                  <div className="space-y-1 max-h-24 overflow-y-auto">
+                    <p className="text-[9px] font-medium text-zinc-500 uppercase tracking-wider">Assign</p>
+                    {unassignedBusinesses.slice(0, 10).map(biz => (
+                      <div key={biz.id} className="flex items-center justify-between gap-2 py-1.5 px-2.5 bg-white dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-700 rounded-lg">
+                        <p className="text-xs font-medium text-zinc-900 dark:text-zinc-100 truncate">{biz.name}</p>
+                        <button type="button" onClick={() => handleAssign(biz)} className="shrink-0 text-[10px] font-medium text-blue-600 dark:text-blue-400 hover:underline">Assign</button>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
 
-              <div className="pt-2">
+              <div className="pt-1">
                 <button
                   onClick={savePermissions}
                   disabled={isSaving}
-                  className="w-full py-3.5 bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 rounded-xl text-sm font-semibold shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full py-2.5 bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 rounded-lg text-xs font-semibold disabled:opacity-50"
                 >
-                  {isSaving ? 'Updating...' : 'Save Permissions'}
+                  {isSaving ? 'Saving...' : 'Save Permissions'}
                 </button>
-                <p className="text-[10px] text-center text-zinc-500 dark:text-zinc-400 mt-3">Changes propagate to manager&apos;s terminal immediately.</p>
+                <p className="text-[9px] text-center text-zinc-500 dark:text-zinc-400 mt-1.5">Applies immediately.</p>
               </div>
             </div>
           ) : !isAdding ? (

@@ -31,7 +31,7 @@ import {
 import { Business, FilterType, User, CompanySettings, CompanyProfile } from './types';
 import { BUSINESS_DATA, createDefaultCompanyProfile, DEFAULT_COMPANY_SETTINGS } from './constants';
 import { api } from './src/api/client';
-import { StageBadge, StatusPill } from './components/Badge';
+import { StatusPill } from './components/Badge';
 import { RouteLine } from './components/RouteLine';
 import { DetailDrawer } from './components/DetailDrawer';
 import { Login } from './components/Login';
@@ -299,7 +299,7 @@ const App: React.FC = () => {
     const poll = () => {
       api.getChatThreads().then((list) => {
         const n = Array.isArray(list) ? list.length : 0;
-        setUnreadChatCount((prev) => (n > 0 ? Math.min(n, 99) : prev));
+        setUnreadChatCount(n > 0 ? Math.min(n, 99) : 0);
       }).catch(() => {});
     };
     poll();
@@ -740,14 +740,11 @@ const App: React.FC = () => {
                       <tr>
                         <th className="px-4 py-3 w-[16%] dashboard-table-head">Business Entity</th>
                         <th className="px-4 py-3 w-[7%] dashboard-table-head">Status</th>
-                        <th className="px-4 py-3 w-[22%] dashboard-table-head">Route Map (Health Blinking)</th>
+                        <th className="px-4 py-3 w-[22%] dashboard-table-head">Route</th>
                         <th className="px-4 py-3 w-[8%] dashboard-table-head">Responsible</th>
                         <th className="px-4 py-3 w-[12%] dashboard-table-head">Next Deliverable</th>
                         <th className="px-4 py-3 w-[6%] dashboard-table-head">ETA</th>
                         <th className="px-4 py-3 w-[6%] dashboard-table-head">Latency</th>
-                        <th className="px-4 py-3 w-[6%] dashboard-table-head">Risks</th>
-                        <th className="px-4 py-3 w-[6%] dashboard-table-head">Escalation</th>
-                        <th className="px-4 py-3 w-[9%] dashboard-table-head">Stage</th>
                         <th className="w-[4%]"></th>
                       </tr>
                     </thead>
@@ -756,13 +753,11 @@ const App: React.FC = () => {
                         const isOverdue = biz.status === 'Overdue';
                         const isStale = biz.status === 'Stale';
                         const isEven = idx % 2 === 0;
-                        const riskCount = biz.risks?.length ?? 0;
-                        const hasEscalation = Boolean(biz.escalationRequested);
                         return (
                           <tr
                             key={biz.id}
                             onClick={() => setSelectedBusiness(biz)}
-                            className={`group cursor-pointer border-b border-zinc-100 dark:border-zinc-800 hover:bg-zinc-50/80 dark:hover:bg-zinc-800/20 ${isEven ? 'bg-white dark:bg-zinc-900' : 'bg-zinc-50/70 dark:bg-zinc-900/60'} ${isStale ? 'bg-amber-50/30 dark:bg-amber-900/10' : ''} ${hasEscalation ? 'bg-blue-50/30 dark:bg-blue-900/10' : ''}`}
+                            className={`group cursor-pointer border-b border-zinc-100 dark:border-zinc-800 hover:bg-zinc-50/80 dark:hover:bg-zinc-800/20 ${isEven ? 'bg-white dark:bg-zinc-900' : 'bg-zinc-50/70 dark:bg-zinc-900/60'} ${isStale ? 'bg-amber-50/30 dark:bg-amber-900/10' : ''}`}
                             style={{ height: '56px' }}
                           >
                             <td className="px-4 py-2.5">
@@ -792,31 +787,6 @@ const App: React.FC = () => {
                             <td className="px-4 py-2.5"><span className="dashboard-cell-primary truncate block" title={biz.nextMilestone}>{biz.nextMilestone}</span></td>
                             <td className="px-4 py-2.5"><span className={`dashboard-cell-primary ${isOverdue ? 'text-red-600 dark:text-red-400' : ''}`}>{biz.eta}</span></td>
                             <td className="px-4 py-2.5"><span className="dashboard-cell-secondary">{biz.updated}</span></td>
-                            <td className="px-4 py-2.5">
-                              {riskCount > 0 ? (
-                                <span className="inline-flex items-center gap-1 dashboard-label-sm px-2 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
-                                  <AlertCircle size={10} /> {riskCount}
-                                </span>
-                              ) : (
-                                <span className="dashboard-cell-secondary">—</span>
-                              )}
-                            </td>
-                            <td className="px-4 py-2.5">
-                              {hasEscalation ? (
-                                <span
-                                  className="inline-flex items-center gap-1 dashboard-label-sm px-2 py-0.5 rounded bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-200"
-                                  title={biz.escalationNote && biz.escalationNote.trim() ? `Reason: ${biz.escalationNote}` : undefined}
-                                >
-                                  <ArrowUpCircle size={10} />
-                                  {biz.escalatedToManagerId
-                                    ? (managers.find(m => m.id === biz.escalatedToManagerId)?.name ?? 'Requested')
-                                    : 'Requested'}
-                                </span>
-                              ) : (
-                                <span className="dashboard-cell-secondary">—</span>
-                              )}
-                            </td>
-                            <td className="px-4 py-2.5"><StageBadge stage={biz.stage} /></td>
                             <td className="pr-4 text-right"><ChevronRight size={14} className="text-zinc-300 dark:text-zinc-500 opacity-0 group-hover:opacity-100 transition-opacity" /></td>
                           </tr>
                         );

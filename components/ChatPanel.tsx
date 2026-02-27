@@ -470,6 +470,8 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
         .finally(() => setSending(false));
     };
 
+    const clearSending = () => setSending(false);
+
     if (isImage) {
       const reader = new FileReader();
       reader.onload = () => {
@@ -477,6 +479,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
         const body = `📷IMAGE\n${file.name}\n${dataURL}`;
         sendBody(body);
       };
+      reader.onerror = () => clearSending();
       reader.readAsDataURL(file);
     } else {
       const reader = new FileReader();
@@ -489,6 +492,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
         const body = `📎FILE\n${file.name}\n${base64}`;
         sendBody(body);
       };
+      reader.onerror = () => clearSending();
       reader.readAsArrayBuffer(file);
     }
   };
