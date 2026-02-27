@@ -3,6 +3,7 @@ node_modules
 .DS_Store
 dist
 .env*
+!.env.example
 *.exp
 .server
 .server_key

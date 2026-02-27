@@ -26,7 +26,7 @@ Keep this running on port **3001**. The frontend (Vite on 3000) proxies `/api` t
 
 ### 2. (Optional) Enable “Forgot password” emails
 
-To send the 6-digit code by email, configure SMTP in **`server/.env`**:
+To send the 6-digit code by email, configure SMTP. **Copy `server/.env.example` to `server/.env`** and fill in your values. Example:
 
 - **Gmail (recommended for testing)**  
   - [Create an App Password](https://support.google.com/accounts/answer/185833) for your Google account.  
