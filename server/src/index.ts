@@ -13,7 +13,8 @@ const app = express();
 const prisma = new PrismaClient();
 const port = process.env.PORT || 3001;
 
-app.use(cors());
+const corsOrigin = process.env.CORS_ORIGIN || true;
+app.use(cors({ origin: corsOrigin }));
 app.use(express.json({ limit: '10mb' })); // allow chat messages with embedded images/files (base64)
 
 // --- Auth for Chat/Meet/CXO (header X-User-Id) ---
@@ -1032,6 +1033,14 @@ app.post('/api/cxo/managers/:id/enable', requireAuth, requireCXO, async (req: Re
     return res.status(500).json({ error: 'Failed to enable' });
   }
 });
+
+// Production: serve frontend static files if present (copy dist/ to server/public after build)
+const publicDir = path.join(__dirname, '..', 'public');
+const fs = require('fs');
+if (fs.existsSync(publicDir)) {
+  app.use(express.static(publicDir));
+  app.get('*', (_req, res) => res.sendFile(path.join(publicDir, 'index.html')));
+}
 
 app.listen(port, () => {
     console.log(`Server is running on port ${port}`);

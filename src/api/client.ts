@@ -1,7 +1,9 @@
 
 import { Business, User } from '../../types';
 
-const API_BASE = '/api';
+const API_BASE = typeof import.meta.env.VITE_API_BASE === 'string' && import.meta.env.VITE_API_BASE
+  ? import.meta.env.VITE_API_BASE.replace(/\/$/, '')
+  : '/api';
 
 let authUserId: string | null = null;
 export function setAuthUser(id: string | null) {

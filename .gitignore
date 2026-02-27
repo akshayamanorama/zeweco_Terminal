@@ -9,3 +9,4 @@ dist
 .server_key
 *.db
 server/prisma/*.db
+server/public
