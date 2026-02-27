@@ -20,7 +20,12 @@ async function fetchAPI<T>(endpoint: string, options?: RequestInit, requireAuth 
     });
 
     if (!response.ok) {
-        throw new Error(`API Error: ${response.statusText}`);
+        let message = response.statusText;
+        try {
+            const body = await response.json();
+            if (body && typeof body.error === 'string') message = body.error;
+        } catch (_) {}
+        throw new Error(message);
     }
 
     return response.json();
@@ -51,7 +56,12 @@ export const api = {
 
     // Auth
     login: (email: string, password?: string) =>
-        fetchAPI<User>('/login', { method: 'POST', body: JSON.stringify({ email, password: password || 'password' }) }),
+        fetchAPI<User>('/login', { method: 'POST', body: JSON.stringify({ email, password: password || '' }) }),
+    requestPasswordReset: (email: string) =>
+        fetchAPI<{ ok: boolean; message: string }>('/auth/request-reset', { method: 'POST', body: JSON.stringify({ email }) }),
+    resetPasswordWithPin: (email: string, pin: string, newPassword: string) =>
+        fetchAPI<{ ok: boolean; message?: string }>('/auth/reset-with-pin', { method: 'POST', body: JSON.stringify({ email, pin, newPassword }) }),
+    isEmailConfigured: () => fetchAPI<{ configured: boolean }>('/auth/email-configured'),
 
     // Users
     getUsers: () => fetchAPI<User[]>('/users'),

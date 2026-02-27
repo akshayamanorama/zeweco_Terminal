@@ -1,0 +1,102 @@
+================================================================================
+  HOW TO ENABLE "FORGOT PASSWORD" EMAIL – STEP BY STEP (NON-TECH)
+================================================================================
+
+You need to add your Gmail address and a special "App Password" to the server
+so it can send the 6-digit reset code to your email. Follow these steps.
+
+--------------------------------------------------------------------------------
+STEP 1: Turn on 2-Step Verification (if you haven’t already)
+--------------------------------------------------------------------------------
+
+1. Open your web browser and go to: https://myaccount.google.com
+2. Sign in with the Gmail account you want to use (e.g. akshaya@gmail.com).
+3. Click "Security" in the left menu.
+4. Under "How you sign in to Google", click "2-Step Verification".
+5. If it’s OFF, turn it ON and follow the prompts (phone number, etc.).
+
+--------------------------------------------------------------------------------
+STEP 2: Create a Gmail "App Password"
+--------------------------------------------------------------------------------
+
+1. Still in Google Account → Security.
+2. Under "How you sign in to Google", click "App passwords".
+   (If you don’t see it, make sure 2-Step Verification is ON first.)
+3. At the bottom, under "Select app", choose "Mail".
+4. Under "Select device", choose "Other" and type: Zeweco Terminal
+5. Click "Generate".
+6. Google will show a 16-character password like: abcd efgh ijkl mnop
+7. Copy it or write it down (no spaces when you use it: abcdefghijklmnop).
+
+--------------------------------------------------------------------------------
+STEP 3: Put your details in the server’s .env file
+--------------------------------------------------------------------------------
+
+1. On your Mac, open Cursor (or any text editor).
+2. Open this file in your project:
+   
+   zeweco_Terminal / server / .env
+
+   In Cursor: File → Open File → go to the "server" folder → click ".env".
+
+3. Find these two lines:
+
+   SMTP_USER=YOUR_GMAIL@gmail.com
+   SMTP_PASS=YOUR_16_CHAR_APP_PASSWORD
+
+4. Replace YOUR_GMAIL@gmail.com with your real Gmail (e.g. akshaya@gmail.com).
+5. Replace YOUR_16_CHAR_APP_PASSWORD with the 16-letter password from Step 2
+   (all 16 characters, no spaces).
+6. In the line that says EMAIL_FROM=..., replace YOUR_GMAIL@gmail.com with
+   the same Gmail address.
+7. Save the file (Cmd+S).
+
+Example after editing (use your own email and app password):
+
+   SMTP_USER=akshaya@gmail.com
+   SMTP_PASS=abcdefghijklmnop
+   EMAIL_FROM="Zeweco Terminal <akshaya@gmail.com>"
+
+--------------------------------------------------------------------------------
+STEP 4: Restart the server
+--------------------------------------------------------------------------------
+
+1. Go to the terminal window where the server is running (it says something
+   like "Server is running on port 3004").
+2. Press Ctrl+C to stop the server.
+3. Start it again with:
+
+   cd server
+   npm run dev
+
+4. When you see "Server is running on port 3004", leave that window open.
+
+--------------------------------------------------------------------------------
+STEP 5: Test "Forgot password"
+--------------------------------------------------------------------------------
+
+1. In your browser, open the app: http://127.0.0.1:3003/
+2. Click "Forgot password?".
+3. Enter the email where you want to receive the code (e.g. akshaya@zeweco.com
+   or the same Gmail you used in .env).
+4. Click "Send code".
+5. Check that email’s inbox (and spam folder). You should get an email with
+   a 6-digit code. Enter it on the next screen and set a new password.
+
+--------------------------------------------------------------------------------
+TROUBLESHOOTING
+--------------------------------------------------------------------------------
+
+- "Invalid credentials" or "Username and Password not accepted"
+  → Use the 16-character App Password from Step 2, not your normal Gmail
+    password. Remove any spaces.
+
+- "Less secure app" or "App password not working"
+  → Make sure 2-Step Verification is ON and you created a new App Password
+    for "Mail" / "Other (Zeweco Terminal)".
+
+- Still no email
+  → Check the server terminal for errors. Make sure SMTP_USER and SMTP_PASS
+    in .env have no extra spaces or quotes inside the value.
+
+================================================================================

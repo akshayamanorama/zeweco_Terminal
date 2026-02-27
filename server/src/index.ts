@@ -2,9 +2,12 @@
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import path from 'path';
+import bcrypt from 'bcryptjs';
 import { PrismaClient } from '@prisma/client';
+import { sendPasswordResetPin, isEmailConfigured } from './email';
 
-dotenv.config();
+dotenv.config({ path: path.join(__dirname, '..', '.env') });
 
 const app = express();
 const prisma = new PrismaClient();
@@ -45,6 +48,19 @@ function param(req: Request, key: string): string {
   const v = req.params[key];
   return Array.isArray(v) ? (v[0] ?? '') : (v ?? '');
 }
+
+const BCRYPT_ROUNDS = 10;
+function isBcryptHash(str: string): boolean {
+  return /^\$2[aby]\$\d+\$/.test(str);
+}
+async function hashPassword(plain: string): Promise<string> {
+  return bcrypt.hash(plain, BCRYPT_ROUNDS);
+}
+async function verifyPassword(plain: string, stored: string): Promise<boolean> {
+  if (isBcryptHash(stored)) return bcrypt.compare(plain, stored);
+  return plain === stored;
+}
+
 async function managerCanAccessEntity(userId: string, entityId: string): Promise<boolean> {
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user || user.role === 'CXO') return !!user;
@@ -270,10 +286,16 @@ app.post('/api/login', async (req: Request, res: Response) => {
             where: { email }
         });
 
-        if (user && user.password === password) {
+        if (user && (await verifyPassword(password, user.password))) {
             if (user.disabled) {
                 res.status(403).json({ error: 'Account disabled' });
                 return;
+            }
+            // Upgrade plain-text password to hash on next update (optional, non-blocking)
+            if (!isBcryptHash(user.password)) {
+                hashPassword(password).then((hashed) => {
+                    prisma.user.update({ where: { id: user.id }, data: { password: hashed } }).catch(() => {});
+                }).catch(() => {});
             }
             const { password: _pw, ...rest } = user;
             res.json({
@@ -289,6 +311,69 @@ app.post('/api/login', async (req: Request, res: Response) => {
     }
 });
 
+// --- Password reset via email PIN ---
+app.post('/api/auth/request-reset', async (req: Request, res: Response) => {
+    const rawEmail = typeof req.body?.email === 'string' ? req.body.email.trim() : '';
+    const email = rawEmail.toLowerCase();
+    if (!email) {
+        res.status(400).json({ error: 'Email is required' });
+        return;
+    }
+    try {
+        const user = await prisma.user.findUnique({ where: { email } });
+        if (!user) {
+            res.json({ ok: true, message: 'If an account exists for this email, you will receive a reset code.' });
+            return;
+        }
+        const pin = String(Math.floor(100000 + Math.random() * 900000));
+        const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+        await prisma.passwordResetPin.deleteMany({ where: { email } });
+        await prisma.passwordResetPin.create({ data: { email, pin, expiresAt } });
+        const sent = await sendPasswordResetPin(email, pin);
+        if (sent) {
+            res.json({ ok: true, message: 'Check your email for the reset code.' });
+        } else {
+            res.status(500).json({ error: 'Failed to send email. Configure SMTP (SMTP_USER, SMTP_PASS) in server .env.' });
+        }
+    } catch (e) {
+        res.status(500).json({ error: 'Request failed' });
+    }
+});
+
+app.post('/api/auth/reset-with-pin', async (req: Request, res: Response) => {
+    const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
+    const pin = typeof req.body?.pin === 'string' ? req.body.pin.trim() : '';
+    const newPassword = typeof req.body?.newPassword === 'string' ? req.body.newPassword : '';
+    if (!email || !pin || !newPassword || newPassword.length < 4) {
+        res.status(400).json({ error: 'Email, PIN, and new password (min 4 characters) are required' });
+        return;
+    }
+    try {
+        const record = await prisma.passwordResetPin.findFirst({
+            where: { email, pin },
+            orderBy: { expiresAt: 'desc' }
+        });
+        if (!record) {
+            res.status(400).json({ error: 'Invalid or expired code. Request a new one.' });
+            return;
+        }
+        if (record.expiresAt < new Date()) {
+            await prisma.passwordResetPin.delete({ where: { id: record.id } });
+            res.status(400).json({ error: 'Code expired. Request a new one.' });
+            return;
+        }
+        const hashed = await hashPassword(newPassword);
+        await prisma.user.updateMany({ where: { email }, data: { password: hashed } });
+        await prisma.passwordResetPin.delete({ where: { id: record.id } });
+        res.json({ ok: true, message: 'Password updated. You can now log in.' });
+    } catch (e) {
+        res.status(500).json({ error: 'Reset failed' });
+    }
+});
+
+app.get('/api/auth/email-configured', (_req: Request, res: Response) => {
+    res.json({ configured: isEmailConfigured() });
+});
 
 // --- User Management ---
 
@@ -357,7 +442,7 @@ app.put('/api/users/:id/credentials', async (req: Request, res: Response) => {
     try {
         const data: { email?: string; password?: string } = {};
         if (typeof email === 'string' && email.trim()) data.email = email.trim();
-        if (typeof password === 'string' && password) data.password = password;
+        if (typeof password === 'string' && password) data.password = await hashPassword(password);
 
         if (Object.keys(data).length === 0) {
             return res.status(400).json({ error: 'Provide email or password to update' });
@@ -400,7 +485,7 @@ app.post('/api/users/reset-credentials', requireAuth, requireCXO, async (req: Re
 
         const data: { email?: string; password?: string } = {};
         if (typeof newEmail === 'string' && newEmail.trim()) data.email = newEmail.trim().toLowerCase();
-        if (typeof newPassword === 'string' && newPassword) data.password = newPassword;
+        if (typeof newPassword === 'string' && newPassword) data.password = await hashPassword(newPassword);
 
         if (Object.keys(data).length === 0) {
             return res.status(400).json({ error: 'Provide newEmail or newPassword to update' });
@@ -471,7 +556,7 @@ app.post('/api/users', async (req: Request, res: Response) => {
             data: {
                 name,
                 email,
-                password,
+                password: await hashPassword(password),
                 role: 'Manager',
                 avatar: avatar || `https://i.pravatar.cc/150?u=${encodeURIComponent(email)}`,
                 permissions: permissionsJson
@@ -900,7 +985,7 @@ app.post('/api/cxo/managers/:id/reset-credentials', requireAuth, requireCXO, asy
     if (!manager || manager.role !== 'Manager') return res.status(404).json({ error: 'Manager not found' });
     const data: { email?: string; password?: string } = {};
     if (typeof newEmail === 'string' && newEmail.trim()) data.email = newEmail.trim().toLowerCase();
-    if (typeof newPassword === 'string' && newPassword) data.password = newPassword;
+    if (typeof newPassword === 'string' && newPassword) data.password = await hashPassword(newPassword);
     if (Object.keys(data).length === 0) return res.status(400).json({ error: 'Provide newEmail or newPassword' });
     const beforeJson = JSON.stringify({ email: manager.email });
     const updated = await prisma.user.update({ where: { id: managerId }, data });

@@ -1,0 +1,9 @@
+# Start the backend server
+
+Open a terminal and run these two lines (copy-paste as a block):
+
+cd "/Users/akshaya/Downloads/MAIN TERMINAL/zeweco_Terminal/server"
+npm run dev
+
+When you see "Server is running on port 3004", leave the terminal open.
+Then open the app in your browser (e.g. http://127.0.0.1:3003/).

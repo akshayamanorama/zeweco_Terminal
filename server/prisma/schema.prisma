@@ -20,6 +20,13 @@ model User {
   disabled    Boolean  @default(false) // CXO can disable manager
 }
 
+model PasswordResetPin {
+  id        String   @id @default(uuid())
+  email     String
+  pin       String
+  expiresAt DateTime
+}
+
 model Business {
   id            String      @id @default(uuid())
   name          String
